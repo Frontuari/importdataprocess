@@ -54,7 +54,7 @@ public class ImportBPBankAccount extends CustomProcess{
 		}
 		
 		//Set BPartner
-		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET C_BPartner_ID=(SELECT bp.C_BPartner_ID as C_BPartner_ID FROM C_BPartner as bp WHERE bp.Value=bpi.BPartnerValue) WHERE bpi.C_BPartner_ID IS NULL AND bpi.BPartnerValue IS NOT NULL AND bpi.I_IsImported<>'Y'");
+		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET C_BPartner_ID=(SELECT bp.C_BPartner_ID as C_BPartner_ID FROM C_BPartner as bp WHERE bp.taxid=bpi.taxid) WHERE bpi.C_BPartner_ID IS NULL AND bpi.taxid IS NOT NULL AND bpi.I_IsImported<>'Y'");
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set BPartner=" + no);	
 		
@@ -74,7 +74,7 @@ public class ImportBPBankAccount extends CustomProcess{
 		if (log.isLoggable(Level.FINE)) log.fine("Set Bank=" + no);
 		
 		//Set SecuritySocial Number
-		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET A_Ident_SSN=(SELECT bp.value as value FROM C_BPartner bp WHERE bp.C_BPartner_ID=bpi.C_BPartner_ID) WHERE bpi.A_Ident_SSN IS NULL AND bpi.I_IsImported<>'Y'");
+		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET A_Ident_SSN=(SELECT bp.taxid as value FROM C_BPartner bp WHERE bp.C_BPartner_ID=bpi.C_BPartner_ID) WHERE bpi.A_Ident_SSN IS NULL AND bpi.I_IsImported<>'Y'");
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Security Social Number=" + no);
 		
