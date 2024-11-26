@@ -133,7 +133,14 @@ public class ImportProductBOM extends CustomProcess {
 						new Object[] { importBOM.getX12DE355() });				
 			}
 			importBOM.setC_UOM_ID(C_UOM_ID); // uom code
-
+			
+			int AD_Workflow_ID = 0;
+			log.warning(importBOM.get_ValueAsString("WorkflowValue"));
+	        if (importBOM.get_ValueAsString("WorkflowValue")!= null) {
+	            AD_Workflow_ID = getID("AD_Workflow", "Value =?", new Object[] { importBOM.get_ValueAsString("WorkflowValue") });
+	        }
+	        importBOM.set_ValueOfColumn("AD_Workflow_ID", AD_Workflow_ID);
+	        
 			StringBuffer err = new StringBuffer("");
 			if (importBOM.getAD_Org_ID() < 0)
 				err.append(" @AD_Org_ID@ @NotFound@,");
@@ -148,8 +155,10 @@ public class ImportProductBOM extends CustomProcess {
 				importBOM.setI_ErrorMsg(Msg.parseTranslation(getCtx(),
 						err.toString()));
 			}
+			
 			importBOM.saveEx();
 		}
+		
 	}
 
 	/**

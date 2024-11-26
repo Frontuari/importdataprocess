@@ -36,6 +36,11 @@ public class X_I_Product_BOM extends PO implements I_I_Product_BOM, I_Persistent
 	 */
 	private static final long serialVersionUID = 20191120L;
 
+	private static final String COLUMNNAME_AD_Workflow_ID = null;
+	
+	// Agregar el campo para WorkflowValue
+    private String workflowValue;
+
     /** Standard Constructor */
     public X_I_Product_BOM (Properties ctx, int I_Product_BOM_ID, String trxName)
     {
@@ -53,7 +58,17 @@ public class X_I_Product_BOM extends PO implements I_I_Product_BOM, I_Persistent
     {
       super (ctx, rs, trxName);
     }
-
+    
+    // Método para establecer el valor de WorkflowValue
+    public void setWorkflowValue(String workflowValue) 
+    {
+        this.workflowValue = workflowValue;
+    }
+ // Método para establecer AD_Workflow_ID
+    public void setAD_Workflow_ID(int AD_Workflow_ID) {
+        set_Value(COLUMNNAME_AD_Workflow_ID, Integer.valueOf(AD_Workflow_ID));
+    }
+    
     /** AccessLevel
       * @return 3 - Client - Org 
       */
@@ -870,4 +885,7 @@ public class X_I_Product_BOM extends PO implements I_I_Product_BOM, I_Persistent
 	{
 		return (String)get_Value(COLUMNNAME_X12DE355);
 	}
-}
+
+	
+	}
+
