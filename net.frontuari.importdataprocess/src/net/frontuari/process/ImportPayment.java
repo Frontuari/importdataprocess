@@ -101,7 +101,7 @@ public class ImportPayment extends CustomProcess
 		
 		StringBuilder sql = null;
 		int no = 0;
-		StringBuilder clientCheck = new StringBuilder(" AND AD_Client_ID=").append(ba.getAD_Client_ID());
+		StringBuilder clientCheck = new StringBuilder(" AND AD_Client_ID=").append(Env.getAD_Client_ID(getCtx()));
 
 		//	****	Prepare	****
 
@@ -116,7 +116,7 @@ public class ImportPayment extends CustomProcess
 
 		//	Set Client, Org, IsActive, Created/Updated
 		sql = new StringBuilder ("UPDATE I_Payment ")
-			  .append("SET AD_Client_ID = COALESCE (AD_Client_ID,").append (ba.getAD_Client_ID()).append ("),")
+		.append("SET AD_Client_ID = COALESCE (AD_Client_ID,").append (Env.getAD_Client_ID(getCtx())).append ("),")
 			  .append(" AD_Org_ID = COALESCE (AD_Org_ID,").append (p_AD_Org_ID).append ("),");
 		sql.append(" IsActive = COALESCE (IsActive, 'Y'),")
 			  .append(" Created = COALESCE (Created, SysDate),")
@@ -495,6 +495,16 @@ public class ImportPayment extends CustomProcess
 			if (no != 0)
 				log.warning ("Invalid CVC_CashFlowConceptValue=" + no);
 		}
+				//	Added by Jorge Colmenarez, 2024-05-14 09:14
+				sql = new StringBuilder ("UPDATE I_Payment i ")
+				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Duplicated record with same Bank Account,DocType, DocumentNo, DateTrx, PayAmt and Currency, ' ")
+				.append("WHERE C_BankAccount_ID IS NOT NULL AND DocumentNo IS NOT NULL AND DateTrx IS NOT NULL AND PayAmt IS NOT NULL AND C_Currency_ID IS NOT NULL ")
+				.append(" AND EXISTS (SELECT 1 FROM C_Payment p WHERE p.C_BankAccount_ID = i.C_BankAccount_ID AND p.DocumentNo = i.DocumentNo AND p.DateTrx = i.DateTrx AND p.PayAmt = i.PayAmt AND p.C_Currency_ID = i.C_Currency_ID AND p.C_DocType_ID = i.C_DocType_ID) ")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (no != 0)
+				log.warning ("Duplicated record=" + no);
+		//	End Jorge Colmenarez
 		
 		commitEx();
 		if (p_IsValidateOnly)

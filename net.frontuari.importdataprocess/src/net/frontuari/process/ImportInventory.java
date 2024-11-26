@@ -594,6 +594,8 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 			costingDoc.saveEx();
 		}
 		//	Modified by Jorge Colmenarez, 2023-12-01 19:44
+				//	Prevent create lines when currentcost and newcost it's same
+				if(cost.getCurrentCostPrice().compareTo(imp.getCurrentCostPrice())!=0) {
 		//	Prevent create excessive product adjust cost lines 
 		if(!MAcctSchema.COSTINGLEVEL_BatchLot.equals(costingLevel)) {
 			lineID = DB.getSQLValue(get_TrxName(), "SELECT MAX(M_InventoryLine_ID) FROM M_InventoryLine WHERE M_Inventory_ID = ? AND M_Product_ID = ?", costingDoc.get_ID(),cost.getM_Product_ID());
@@ -607,6 +609,7 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 				costingLine.setAD_Org_ID(imp.getAD_Org_ID());
 				costingLine.setM_AttributeSetInstance_ID(costASI);
 				costingLine.saveEx();
+				lineID = costingLine.getM_InventoryLine_ID();
 			}
 		}else {
 			FTUMInventoryLine costingLine = new FTUMInventoryLine(getCtx(), 0, get_TrxName());
@@ -624,6 +627,7 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 		
 		imp.setM_CostingLine_ID(lineID);
 		imp.saveEx();
+		}
 	}
 
 

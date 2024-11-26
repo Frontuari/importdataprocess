@@ -7,7 +7,6 @@
 			<attribute name="test" value="true"/>
 		</attributes>
 	</classpathentry>
-	<classpathentry kind="output" path="target/classes"/>
 	<classpathentry kind="lib" path="lib/junit-jupiter-engine.jar"/>
 	<classpathentry kind="lib" path="lib/junit-jupiter-api.jar"/>
 	<classpathentry kind="lib" path="lib/junit-platform-commons.jar"/>
@@ -27,4 +26,5 @@
 	<classpathentry kind="lib" path="lib/commons-lang3.jar"/>
 	<classpathentry kind="lib" path="lib/hamcrest-core.jar"/>
 	<classpathentry kind="lib" path="lib/hamcrest.jar"/>
+	<classpathentry kind="output" path="target/classes"/>
 </classpath>

@@ -308,6 +308,24 @@ public class ImportInOut extends CustomProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning ("No BP Location=" + no);
+					
+		//	Purchase/Sales Order
+		sql = new StringBuilder ("UPDATE I_InOut i ")
+		.append("SET C_Order_ID=(SELECT MAX(C_Order_ID) FROM C_Order o")
+		.append(" WHERE i.OrderDocumentNo=o.DocumentNo AND i.AD_Client_ID=o.AD_Client_ID AND i.AD_Org_ID = o.AD_Org_ID ")
+		.append(" AND o.C_BPartner_ID = i.C_BPartner_ID) ")
+		.append("WHERE C_Order_ID IS NULL AND OrderDocumentNo IS NOT NULL AND C_BPartner_ID IS NOT NULL ")
+		.append(" AND I_IsImported<>'Y'").append (clientCheck);
+  no = DB.executeUpdate(sql.toString(), get_TrxName());
+  if (log.isLoggable(Level.FINE)) log.fine("Set Purchase/Sales Order=" + no);	
+  
+  sql = new StringBuilder ("UPDATE I_InOut ")	// No DocType
+			.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No Purchase/Sales Order, ' ")
+			.append("WHERE C_Order_ID IS NULL AND OrderDocumentNo IS NOT NULL AND C_BPartner_ID IS NOT NULL ")
+			.append(" AND I_IsImported<>'Y'").append (clientCheck);
+	  no = DB.executeUpdate(sql.toString(), get_TrxName());
+  if (no != 0)
+	  log.warning ("No Purchase/Sales Order=" + no);
 
 		//	Activity
 		sql = new StringBuilder ("UPDATE I_InOut o ")
@@ -388,8 +406,8 @@ public class ImportInOut extends CustomProcess {
 		sql = new StringBuilder ("UPDATE I_InOut i ")
 			  .append("SET C_OrderLine_ID=(SELECT MAX(C_OrderLine_ID) FROM C_OrderLine ol")
 			  .append(" WHERE i.C_Order_ID=ol.C_Order_ID AND i.AD_Client_ID=ol.AD_Client_ID  ")
-			  .append(" AND i.M_Product_ID=ol.M_Product_ID) ")
-			  .append("WHERE C_OrderLine_ID IS NULL AND C_Order_ID IS NOT NULL AND M_Product_ID IS NOT NULL")
+			  .append(" AND i.M_Product_ID=ol.M_Product_ID AND i.C_BPartner_ID = ol.C_BPartner_ID AND ol.QtyOrdered = ABS(i.QtyEntered)) ")
+			  .append("WHERE C_OrderLine_ID IS NULL AND C_Order_ID IS NOT NULL AND M_Product_ID IS NOT NULL AND C_BPartner_ID IS NOT NULL AND QtyEntered IS NOT NULL ")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set OrderLine=" + no);

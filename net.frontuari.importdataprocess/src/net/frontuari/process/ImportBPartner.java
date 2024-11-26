@@ -230,7 +230,7 @@ implements ImportProcess
 		//	Existing User ?
 		sql = new StringBuilder ("UPDATE I_BPartner i ")
 				.append("SET (C_BPartner_ID,AD_User_ID)=")
-				.append("(SELECT C_BPartner_ID,AD_User_ID FROM AD_User u ")
+				.append("(SELECT MAX(C_BPartner_ID),MAX(AD_User_ID) FROM AD_User u ")
 				.append("WHERE i.EMail=u.EMail AND u.AD_Client_ID=i.AD_Client_ID) ")
 				.append("WHERE i.EMail IS NOT NULL AND I_IsImported='N'").append(clientCheck);
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
