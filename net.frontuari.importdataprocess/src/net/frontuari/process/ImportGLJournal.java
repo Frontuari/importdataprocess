@@ -159,10 +159,8 @@ public class ImportGLJournal extends CustomProcess
 							String number = amt.substring(0,amt.length()-2);
 							String decimals = amt.substring(amt.length() - 2, amt.length());
 							amt = number + "." + decimals;
-							log.log(Level.SEVERE,OrgValue + " " +date + " " + accountNo+ " " +User1 + " " + Description+ " " + trxType+ " " +amt  );
 							//we format date first 
 							date = date.substring(0,2) + "/" + date.substring(2,4) + "/" + date.substring(4,8)+ " 00:00:00";
-							log.log(Level.SEVERE, date);
 							DateTimeFormatter formatDateTime = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
 					        LocalDateTime localDateTime = LocalDateTime.from(formatDateTime.parse(date));
 					        Timestamp ts = Timestamp.valueOf(localDateTime);
