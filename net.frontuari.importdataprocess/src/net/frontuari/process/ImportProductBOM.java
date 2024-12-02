@@ -22,6 +22,7 @@ import org.compiere.model.MProduct;
 import org.compiere.model.MUOM;
 import org.compiere.model.Query;
 import org.compiere.process.ProcessInfoParameter;
+import org.compiere.util.DB;
 import org.compiere.util.Env;
 import org.compiere.util.Msg;
 import org.compiere.wf.MWorkflow;
@@ -149,7 +150,7 @@ public class ImportProductBOM extends CustomProcess {
 	        }
 	        if(S_Resource_ID>0)
 	        	importBOM.set_ValueOfColumn("S_Resource_ID", S_Resource_ID);
-	        if(S_Resource_ID==0 && AD_Workflow_ID>0) {
+	        if(S_Resource_ID<=0 && AD_Workflow_ID>0) {
 	        	MWorkflow wf = new MWorkflow(getCtx(), AD_Workflow_ID, get_TrxName());
 	        	importBOM.set_ValueOfColumn("S_Resource_ID", wf.getS_Resource_ID());
 	        }
