@@ -133,13 +133,22 @@ public class ImportProductBOM extends CustomProcess {
 						new Object[] { importBOM.getX12DE355() });				
 			}
 			importBOM.setC_UOM_ID(C_UOM_ID); // uom code
-			
+			//  Modified by Joaquin Mora, 2024-11-27
+			//  Sets the Resource and Workflow
 			int AD_Workflow_ID = 0;
 			log.warning(importBOM.get_ValueAsString("WorkflowValue"));
 	        if (importBOM.get_ValueAsString("WorkflowValue")!= null) {
 	            AD_Workflow_ID = getID("AD_Workflow", "Value =?", new Object[] { importBOM.get_ValueAsString("WorkflowValue") });
 	        }
 	        importBOM.set_ValueOfColumn("AD_Workflow_ID", AD_Workflow_ID);
+	        
+	        int S_Resource_ID = 0;
+	        log.warning(importBOM.get_ValueAsString("ResourceValue"));
+	        if (importBOM.get_ValueAsString("ResourceValue") != null) {
+	            S_Resource_ID = getID("S_Resource", "Value=?", new Object[] { importBOM.get_ValueAsString("ResourceValue") });
+	        }
+	        importBOM.set_ValueOfColumn("S_Resource_ID", S_Resource_ID);
+	        //	End Joaquin Mora
 	        
 			StringBuffer err = new StringBuffer("");
 			if (importBOM.getAD_Org_ID() < 0)
@@ -170,6 +179,10 @@ public class ImportProductBOM extends CustomProcess {
 			isImported = false;
 			MPPProductBOM bom = getMPPProductBOM(importBOM);
 			MPPProductBOMLine bomLine = null;
+			 int AD_Workflow_ID = importBOM.get_ValueAsInt("AD_Workflow_ID");
+		        bom.set_ValueOfColumn("AD_Workflow_ID", AD_Workflow_ID);
+		        int S_Resource_ID = importBOM.get_ValueAsInt("S_Resource_ID");
+		        bom.set_ValueOfColumn("S_Resource_ID", S_Resource_ID);
 			if (bom != null)
 				bomLine = importBOMLine(bom, importBOM);
 			if (bomLine != null) {
@@ -180,7 +193,7 @@ public class ImportProductBOM extends CustomProcess {
 				isImported = true;
 
 			}
-
+			
 			importBOM.setI_IsImported(isImported);
 			importBOM.setProcessed(isImported);
 			importBOM.saveEx();
@@ -238,6 +251,11 @@ public class ImportProductBOM extends CustomProcess {
 		bom.set_ValueOfColumn("ProductionQty", importBOM.get_Value("ProductionQty"));
 		//	End Jorge Colmenarez
 		bom.setC_UOM_ID(importBOM.getM_Product().getC_UOM_ID());
+		//  Modified by Joaquin Mora, 2024-11-27
+		bom.set_ValueOfColumn("AD_Workflow_ID", importBOM.get_ValueAsInt("AD_Workflow_ID"));
+		
+		bom.set_ValueOfColumn("S_Resource_ID", importBOM.get_ValueAsInt("S_Resource_ID"));
+		//	End Joaquin Mora
 		bom.saveEx();
 
 		return bom;
@@ -307,6 +325,7 @@ public class ImportProductBOM extends CustomProcess {
 			bomLine.setC_UOM_ID(importBOM.getC_UOM_ID());
 		else
 			bomLine.setC_UOM_ID(component.getC_UOM_ID());
+		
 		bomLine.saveEx();
 		return bomLine;
 	}
