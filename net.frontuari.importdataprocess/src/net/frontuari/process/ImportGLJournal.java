@@ -22,20 +22,23 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.logging.Level;
 
+import org.adempiere.base.annotation.Process;
 import org.compiere.model.MAccount;
 import org.compiere.model.MJournal;
 import org.compiere.model.MJournalBatch;
 import org.compiere.model.MJournalLine;
-import org.compiere.model.MSysConfig;
 import org.compiere.model.X_I_GLJournal;
 import org.compiere.process.ProcessInfoParameter;
 import org.compiere.util.CLogger;
 import org.compiere.util.DB;
 import org.compiere.util.TimeUtil;
 
-import net.frontuari.base.FTUProcess;
+import net.frontuari.base.CustomProcess;
+
 
 /**
  *	Import GL Journal Batch/JournalLine from I_Journal
@@ -43,7 +46,8 @@ import net.frontuari.base.FTUProcess;
  * 	@author 	Jorg Janke
  * 	@version 	$Id: ImportGLJournal.java,v 1.2 2006/07/30 00:51:02 jjanke Exp $
  */
-public class ImportGLJournal extends FTUProcess
+@Process
+public class ImportGLJournal extends CustomProcess
 {
 	/**	Client to be imported to		*/
 	private int 			m_AD_Client_ID = 0;
@@ -114,12 +118,85 @@ public class ImportGLJournal extends FTUProcess
 		//	Delete Old Imported
 		if (m_DeleteOldImported)
 		{
-			sql = new StringBuilder ("DELETE I_GLJournal ")
-				  .append(" WHERE I_IsImported='Y'").append (clientCheck);
+			sql = new StringBuilder ("DELETE FROM I_GLJournal ")
+				  .append("WHERE I_IsImported='Y'").append (clientCheck);
 			no = DB.executeUpdate(sql.toString(), get_TrxName());
 			if (log.isLoggable(Level.FINE)) log.fine("Delete Old Impored =" + no);
 		}
 
+		X_I_GLJournal test = new X_I_GLJournal(getCtx(),getRecord_ID(),get_TrxName());
+		
+		if (test.get_ColumnIndex("SPIFileContent")>0) {
+				PreparedStatement pstmtValidate = null;
+				ResultSet rsValidate = null;
+				sql = new StringBuilder ("SELECT * FROM I_GLJournal ")
+						.append("WHERE SPIFileContent IS NOT NULL AND I_IsImported='N'").append (clientCheck)
+						.append(" ORDER BY AD_Org_ID,TRUNC(DateAcct),COALESCE(BatchDocumentNo, I_GLJournal_ID::varchar), COALESCE(JournalDocumentNo, ")
+								.append("I_GLJournal_ID::varchar),	 C_AcctSchema_ID, PostingType, C_DocType_ID, GL_Category_ID, ")
+								.append("C_Currency_ID, Line, I_GLJournal_ID");
+					try
+					{
+						pstmtValidate = DB.prepareStatement (sql.toString (), get_TrxName());
+						rsValidate = pstmtValidate.executeQuery ();
+						//
+						while (rsValidate.next())
+						{
+							X_I_GLJournal imp = new X_I_GLJournal (getCtx (), rsValidate, get_TrxName());
+		
+							String content = imp.get_ValueAsString("SPIFileContent");
+							String OrgValue = content.substring(0, 4);
+							String date = content.substring(47,55);
+							String accountNo = content.substring(55,59);
+							String User1 = content.substring(60,64);
+							String amt = content.substring(109,126);
+							String Description = content.substring(126,155);
+							String trxType = content.substring(155,156);
+							
+							amt = amt.replace(" ", "");
+							amt = amt.replace("-", "");
+							
+							//format amt 
+							String number = amt.substring(0,amt.length()-2);
+							String decimals = amt.substring(amt.length() - 2, amt.length());
+							amt = number + "." + decimals;
+							//we format date first 
+							date = date.substring(0,2) + "/" + date.substring(2,4) + "/" + date.substring(4,8)+ " 00:00:00";
+							DateTimeFormatter formatDateTime = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
+					        LocalDateTime localDateTime = LocalDateTime.from(formatDateTime.parse(date));
+					        Timestamp ts = Timestamp.valueOf(localDateTime);
+							//set values
+					        imp.setDateAcct(ts);
+							imp.setOrgValue(OrgValue);
+							imp.setOrgTrxValue(OrgValue);
+							imp.setAccountValue(accountNo);
+							imp.set_ValueOfColumn("User1Value", User1);
+							imp.setDescription(Description);
+							BigDecimal Amt = new BigDecimal (amt);
+							if (trxType.equalsIgnoreCase("1")) {
+							imp.setAmtAcctDr(Amt);
+							imp.setAmtSourceDr(Amt);
+							}else {
+							imp.setAmtAcctCr(Amt);
+							imp.setAmtSourceCr(Amt);	
+							}
+							//imp.setDateAcct(m_DateAcct);
+							imp.saveEx();
+						}
+						
+					}catch (SQLException ex)
+					{
+						log.log(Level.SEVERE, sql.toString(), ex);
+					}
+					finally
+					{
+						DB.close(rsValidate, pstmtValidate);
+						rsValidate = null;
+						pstmtValidate = null;
+				}
+		}
+		
+		test = null;
+		
 		//	Set IsActive, Created/Updated
 		sql = new StringBuilder ("UPDATE I_GLJournal ")
 			.append("SET IsActive = COALESCE (IsActive, 'Y'),")
@@ -129,20 +206,19 @@ public class ImportGLJournal extends FTUProcess
 			.append(" UpdatedBy = COALESCE (UpdatedBy, 0),")
 			.append(" I_ErrorMsg = ' ',")
 			.append(" I_IsImported = 'N' ")
-			.append(" WHERE I_IsImported<>'Y' OR I_IsImported IS NULL");
+			.append("WHERE I_IsImported<>'Y' OR I_IsImported IS NULL");
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.INFO)) log.info ("Reset=" + no);
 
 		//	Set Client from Name
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET AD_Client_ID=(SELECT c.AD_Client_ID FROM AD_Client c WHERE c.Value=i.ClientValue) ")
-			.append(" WHERE (AD_Client_ID IS NULL OR AD_Client_ID=0) AND ClientValue IS NOT NULL")
+			.append("WHERE (AD_Client_ID IS NULL OR AD_Client_ID=0) AND ClientValue IS NOT NULL")
 			.append(" AND I_IsImported<>'Y'");
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Client from Value=" + no);
 
 		//	Set Default Client, Doc Org, AcctSchema, DatAcct
-		
 		sql = new StringBuilder ("UPDATE I_GLJournal ")
 			  .append("SET AD_Client_ID = COALESCE (AD_Client_ID,").append (m_AD_Client_ID).append ("),")
 			  .append(" AD_OrgDoc_ID = COALESCE (AD_OrgDoc_ID,").append (m_AD_Org_ID).append ("),");
@@ -151,14 +227,14 @@ public class ImportGLJournal extends FTUProcess
 		if (m_DateAcct != null)
 			sql.append(" DateAcct = COALESCE (DateAcct,").append (DB.TO_DATE(m_DateAcct)).append ("),");
 		sql.append(" Updated = COALESCE (Updated, SysDate) ")
-			  .append(" WHERE I_IsImported<>'Y' OR I_IsImported IS NULL");
+			  .append("WHERE I_IsImported<>'Y' OR I_IsImported IS NULL");
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Client/DocOrg/Default=" + no);
 
 		//	Error Doc Org
 		sql = new StringBuilder ("UPDATE I_GLJournal o ")
 			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Doc Org, '")
-			.append(" WHERE (AD_OrgDoc_ID IS NULL OR AD_OrgDoc_ID=0")
+			.append("WHERE (AD_OrgDoc_ID IS NULL OR AD_OrgDoc_ID=0")
 			.append(" OR EXISTS (SELECT * FROM AD_Org oo WHERE o.AD_OrgDoc_ID=oo.AD_Org_ID AND (oo.IsSummary='Y' OR oo.IsActive='N')))")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -169,20 +245,20 @@ public class ImportGLJournal extends FTUProcess
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET C_AcctSchema_ID=(SELECT a.C_AcctSchema_ID FROM C_AcctSchema a")
 			.append(" WHERE i.AcctSchemaName=a.Name AND i.AD_Client_ID=a.AD_Client_ID) ")
-			.append(" WHERE C_AcctSchema_ID IS NULL AND AcctSchemaName IS NOT NULL")
+			.append("WHERE C_AcctSchema_ID IS NULL AND AcctSchemaName IS NOT NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set AcctSchema from Name=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET C_AcctSchema_ID=(SELECT c.C_AcctSchema1_ID FROM AD_ClientInfo c WHERE c.AD_Client_ID=i.AD_Client_ID) ")
-			.append(" WHERE C_AcctSchema_ID IS NULL AND AcctSchemaName IS NULL")
+			.append("WHERE C_AcctSchema_ID IS NULL AND AcctSchemaName IS NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set AcctSchema from Client=" + no);
 		//	Error AcctSchema
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid AcctSchema, '")
-			.append(" WHERE (C_AcctSchema_ID IS NULL OR C_AcctSchema_ID=0")
+			.append("WHERE (C_AcctSchema_ID IS NULL OR C_AcctSchema_ID=0")
 			.append(" OR NOT EXISTS (SELECT * FROM C_AcctSchema a WHERE i.AD_Client_ID=a.AD_Client_ID))")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -192,7 +268,7 @@ public class ImportGLJournal extends FTUProcess
 		//	Set DateAcct (mandatory)
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET DateAcct=SysDate ")
-			.append(" WHERE DateAcct IS NULL")
+			.append("WHERE DateAcct IS NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set DateAcct=" + no);
@@ -201,13 +277,13 @@ public class ImportGLJournal extends FTUProcess
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET C_DocType_ID=(SELECT d.C_DocType_ID FROM C_DocType d")
 			.append(" WHERE d.Name=i.DocTypeName AND d.DocBaseType='GLJ' AND i.AD_Client_ID=d.AD_Client_ID) ")
-			.append(" WHERE C_DocType_ID IS NULL AND DocTypeName IS NOT NULL")
+			.append("WHERE C_DocType_ID IS NULL AND DocTypeName IS NOT NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set DocType=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid DocType, '")
-			.append(" WHERE (C_DocType_ID IS NULL OR C_DocType_ID=0")
+			.append("WHERE (C_DocType_ID IS NULL OR C_DocType_ID=0")
 			.append(" OR NOT EXISTS (SELECT * FROM C_DocType d WHERE i.AD_Client_ID=d.AD_Client_ID AND d.DocBaseType='GLJ'))")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -218,13 +294,13 @@ public class ImportGLJournal extends FTUProcess
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET GL_Category_ID=(SELECT c.GL_Category_ID FROM GL_Category c")
 			.append(" WHERE c.Name=i.CategoryName AND i.AD_Client_ID=c.AD_Client_ID) ")
-			.append(" WHERE GL_Category_ID IS NULL AND CategoryName IS NOT NULL")
+			.append("WHERE GL_Category_ID IS NULL AND CategoryName IS NOT NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set DocType=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Category, '")
-			.append(" WHERE (GL_Category_ID IS NULL OR GL_Category_ID=0)")
+			.append("WHERE (GL_Category_ID IS NULL OR GL_Category_ID=0)")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -234,20 +310,20 @@ public class ImportGLJournal extends FTUProcess
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET C_Currency_ID=(SELECT c.C_Currency_ID FROM C_Currency c")
 			.append(" WHERE c.ISO_Code=i.ISO_Code AND c.AD_Client_ID IN (0,i.AD_Client_ID)) ")
-			.append(" WHERE C_Currency_ID IS NULL AND ISO_Code IS NOT NULL")
+			.append("WHERE C_Currency_ID IS NULL AND ISO_Code IS NOT NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Currency from ISO=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET C_Currency_ID=(SELECT a.C_Currency_ID FROM C_AcctSchema a")
 			.append(" WHERE a.C_AcctSchema_ID=i.C_AcctSchema_ID AND a.AD_Client_ID=i.AD_Client_ID)")
-			.append(" WHERE C_Currency_ID IS NULL AND ISO_Code IS NULL")
+			.append("WHERE C_Currency_ID IS NULL AND ISO_Code IS NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Default Currency=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Currency, '")
-			.append(" WHERE (C_Currency_ID IS NULL OR C_Currency_ID=0)")
+			.append("WHERE (C_Currency_ID IS NULL OR C_Currency_ID=0)")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -256,20 +332,20 @@ public class ImportGLJournal extends FTUProcess
 		//	Set Conversion Type
 		sql = new StringBuilder ("UPDATE I_GLJournal i ") 
 			.append("SET ConversionTypeValue='S' ")
-			.append(" WHERE C_ConversionType_ID IS NULL AND ConversionTypeValue IS NULL")
+			.append("WHERE C_ConversionType_ID IS NULL AND ConversionTypeValue IS NULL")
 			.append(" AND I_IsImported='N'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set CurrencyType Value to Spot =" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ") 
 			.append("SET C_ConversionType_ID=(SELECT c.C_ConversionType_ID FROM C_ConversionType c")
 			.append(" WHERE c.Value=i.ConversionTypeValue AND c.AD_Client_ID IN (0,i.AD_Client_ID)) ")
-			.append(" WHERE C_ConversionType_ID IS NULL AND ConversionTypeValue IS NOT NULL")
+			.append("WHERE C_ConversionType_ID IS NULL AND ConversionTypeValue IS NOT NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set CurrencyType from Value=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid CurrencyType, '")
-			.append(" WHERE (C_ConversionType_ID IS NULL OR C_ConversionType_ID=0) AND ConversionTypeValue IS NOT NULL")
+			.append("WHERE (C_ConversionType_ID IS NULL OR C_ConversionType_ID=0) AND ConversionTypeValue IS NOT NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -277,7 +353,7 @@ public class ImportGLJournal extends FTUProcess
 
 		/*sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No ConversionType, '")
-			.append(" WHERE (C_ConversionType_ID IS NULL OR C_ConversionType_ID=0)")
+			.append("WHERE (C_ConversionType_ID IS NULL OR C_ConversionType_ID=0)")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -317,58 +393,13 @@ public class ImportGLJournal extends FTUProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Client Rate=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No Rate, ' ")
-			.append(" WHERE CurrencyRate IS NULL OR CurrencyRate=0")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No Rate, '")
+			.append("WHERE CurrencyRate IS NULL OR CurrencyRate=0")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning ("No Rate=" + no);
 
-		//	** Account Elements (optional) **
-		//	(C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0)
-
-		//	Set Org from Name (* is overwritten and default)
-		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET AD_Org_ID=COALESCE((SELECT o.AD_Org_ID FROM AD_Org o")
-			.append(" WHERE o.Value=i.OrgValue AND o.IsSummary='N' AND i.AD_Client_ID=o.AD_Client_ID),AD_Org_ID) ")
-			.append(" WHERE (AD_Org_ID IS NULL OR AD_Org_ID=0) AND OrgValue IS NOT NULL")
-			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'");
-		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Set Org from Value=" + no);
-		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET AD_Org_ID=AD_OrgDoc_ID ")
-			.append(" WHERE (AD_Org_ID IS NULL OR AD_Org_ID=0) AND (OrgValue IS NULL OR OrgValue='') AND AD_OrgDoc_ID IS NOT NULL AND AD_OrgDoc_ID<>0")
-			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
-		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Set Org from Doc Org=" + no);
-		//	Error Org
-		sql = new StringBuilder ("UPDATE I_GLJournal o ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Org, ' ")
-			.append(" WHERE (AD_Org_ID IS NULL OR AD_Org_ID=0")
-			.append(" OR EXISTS (SELECT * FROM AD_Org oo WHERE o.AD_Org_ID=oo.AD_Org_ID AND (oo.IsSummary='Y' OR oo.IsActive='N')))")
-			//.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
-			.append (clientCheck);
-		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
-			log.warning ("Invalid Org=" + no);
-
-		//added by david castillo 07/12/2022 set period from org first
-
-		//	Set Period by org
-		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET C_Period_ID=(SELECT MAX(p.C_Period_ID) FROM C_Period p")
-			.append(" INNER JOIN C_Year y ON (y.C_Year_ID=p.C_Year_ID)")
-			.append(" INNER JOIN AD_OrgInfo c ON (c.C_Calendar_ID=y.C_Calendar_ID)")
-			.append(" WHERE c.AD_Org_ID=i.AD_Org_ID")
-			// globalqss - cruiz - Bug [ 1577712 ] Financial Period Bug
-			.append(" AND i.DateAcct BETWEEN p.StartDate AND p.EndDate AND p.IsActive='Y' AND p.PeriodType=i.PeriodType) ")
-			.append(" WHERE C_Period_ID IS NULL")
-			.append(" AND I_IsImported<>'Y'").append (clientCheck);
-		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Set Period=" + no);
-		
-		//end david castillo
-		 
 		//	Set Period
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET C_Period_ID=(SELECT MAX(p.C_Period_ID) FROM C_Period p")
@@ -376,23 +407,27 @@ public class ImportGLJournal extends FTUProcess
 			.append(" INNER JOIN AD_ClientInfo c ON (c.C_Calendar_ID=y.C_Calendar_ID)")
 			.append(" WHERE c.AD_Client_ID=i.AD_Client_ID")
 			// globalqss - cruiz - Bug [ 1577712 ] Financial Period Bug
-			.append(" AND i.DateAcct BETWEEN p.StartDate AND p.EndDate AND p.IsActive='Y' AND p.PeriodType=i.PeriodType) ")
-			.append(" WHERE C_Period_ID IS NULL")
+			.append(" AND i.DateAcct BETWEEN p.StartDate AND p.EndDate AND p.IsActive='Y' AND p.PeriodType='S') ")
+			.append("WHERE C_Period_ID IS NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		
 		if (log.isLoggable(Level.FINE)) log.fine("Set Period=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Period, ' ")
-			.append(" WHERE C_Period_ID IS NULL")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Period, '")
+			.append("WHERE C_Period_ID IS NULL OR C_Period_ID NOT IN")
+			.append("(SELECT C_Period_ID FROM C_Period p")
+			.append(" INNER JOIN C_Year y ON (y.C_Year_ID=p.C_Year_ID)")
+			.append(" INNER JOIN AD_ClientInfo c ON (c.C_Calendar_ID=y.C_Calendar_ID) ")
+			.append(" WHERE c.AD_Client_ID=i.AD_Client_ID")
+			// globalqss - cruiz - Bug [ 1577712 ] Financial Period Bug
+			.append(" AND i.DateAcct BETWEEN p.StartDate AND p.EndDate AND p.IsActive='Y' AND p.PeriodType='S')")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning ("Invalid Period=" + no);
-		
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET I_ErrorMsg=I_ErrorMsg||'WARN=Period Closed, ' ")
-			.append(" WHERE C_Period_ID IS NOT NULL AND NOT EXISTS")
+			.append("WHERE C_Period_ID IS NOT NULL AND NOT EXISTS")
 			.append(" (SELECT * FROM C_PeriodControl pc WHERE pc.C_Period_ID=i.C_Period_ID AND DocBaseType='GLJ' AND PeriodStatus='O') ")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -402,12 +437,12 @@ public class ImportGLJournal extends FTUProcess
 		//	Posting Type
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET PostingType='A' ")
-			.append(" WHERE PostingType IS NULL AND I_IsImported<>'Y'").append (clientCheck);
+			.append("WHERE PostingType IS NULL AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Actual PostingType=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid PostingType, ' ")
-			.append(" WHERE PostingType IS NULL OR NOT EXISTS")
+			.append("WHERE PostingType IS NULL OR NOT EXISTS")
 			.append(" (SELECT * FROM AD_Ref_List r WHERE r.AD_Reference_ID=125 AND i.PostingType=r.Value)")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -415,6 +450,33 @@ public class ImportGLJournal extends FTUProcess
 			log.warning ("Invalid PostingTypee=" + no);
 
 
+		//	** Account Elements (optional) **
+		//	(C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0)
+
+		//	Set Org from Name (* is overwritten and default)
+		sql = new StringBuilder ("UPDATE I_GLJournal i ")
+			.append("SET AD_Org_ID=COALESCE((SELECT o.AD_Org_ID FROM AD_Org o")
+			.append(" WHERE o.Value=i.OrgValue AND o.IsSummary='N' AND i.AD_Client_ID=o.AD_Client_ID),AD_Org_ID) ")
+			.append("WHERE (AD_Org_ID IS NULL OR AD_Org_ID=0) AND OrgValue IS NOT NULL")
+			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'");
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Org from Value=" + no);
+		sql = new StringBuilder ("UPDATE I_GLJournal i ")
+			.append("SET AD_Org_ID=AD_OrgDoc_ID ")
+			.append("WHERE (AD_Org_ID IS NULL OR AD_Org_ID=0) AND (OrgValue IS NULL OR OrgValue='') AND AD_OrgDoc_ID IS NOT NULL AND AD_OrgDoc_ID<>0")
+			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Org from Doc Org=" + no);
+		//	Error Org
+		sql = new StringBuilder ("UPDATE I_GLJournal o ")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Org, '")
+			.append("WHERE (AD_Org_ID IS NULL OR AD_Org_ID=0")
+			.append(" OR EXISTS (SELECT * FROM AD_Org oo WHERE o.AD_Org_ID=oo.AD_Org_ID AND (oo.IsSummary='Y' OR oo.IsActive='N')))")
+			//.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
+			.append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (no != 0)
+			log.warning ("Invalid Org=" + no);
 
 		//	Set Account
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
@@ -423,31 +485,45 @@ public class ImportGLJournal extends FTUProcess
 			.append(" INNER JOIN C_AcctSchema_Element ase ON (e.C_Element_ID=ase.C_Element_ID AND ase.ElementType='AC')")
 			.append(" WHERE ev.Value=i.AccountValue AND ev.IsSummary='N'")
 			.append(" AND i.C_AcctSchema_ID=ase.C_AcctSchema_ID AND i.AD_Client_ID=ev.AD_Client_ID) ")
-			.append(" WHERE Account_ID IS NULL AND AccountValue IS NOT NULL")
+			.append("WHERE Account_ID IS NULL AND AccountValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Account from Value=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Account, ' ")
-			.append(" WHERE (Account_ID IS NULL OR Account_ID=0)")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Account, '")
+			.append("WHERE (Account_ID IS NULL OR Account_ID=0)")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning ("Invalid Account=" + no);
 
-		//	Set BPartner
+		//	Set BPartner by Value
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET C_BPartner_ID=(SELECT bp.C_BPartner_ID FROM C_BPartner bp")
 			.append(" WHERE bp.Value=i.BPartnerValue AND bp.IsSummary='N' AND i.AD_Client_ID=bp.AD_Client_ID) ")
-			.append(" WHERE C_BPartner_ID IS NULL AND BPartnerValue IS NOT NULL")
+			.append("WHERE C_BPartner_ID IS NULL AND BPartnerValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set BPartner from Value=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid BPartner, ' ")
-			.append(" WHERE C_BPartner_ID IS NULL AND BPartnerValue IS NOT NULL")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid BPartner, '")
+			.append("WHERE C_BPartner_ID IS NULL AND BPartnerValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		//	Set BPartner by TaxID
+		sql = new StringBuilder ("UPDATE I_GLJournal i ")
+				.append("SET C_BPartner_ID=(SELECT bp.C_BPartner_ID FROM C_BPartner bp")
+				.append(" WHERE bp.TaxID=i.BPTaxID AND bp.IsSummary='N' AND i.AD_Client_ID=bp.AD_Client_ID) ")
+				.append("WHERE C_BPartner_ID IS NULL AND BPTaxID IS NOT NULL")
+				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (log.isLoggable(Level.FINE)) log.fine("Set BPartner from TaxID=" + no);
+			sql = new StringBuilder ("UPDATE I_GLJournal i ")
+				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid BPartner, '")
+				.append("WHERE C_BPartner_ID IS NULL AND BPTaxID IS NOT NULL")
+				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+		
 		if (no != 0)
 			log.warning ("Invalid BPartner=" + no);
 
@@ -456,13 +532,13 @@ public class ImportGLJournal extends FTUProcess
 			.append("SET M_Product_ID=(SELECT MAX(p.M_Product_ID) FROM M_Product p")
 			.append(" WHERE (p.Value=i.ProductValue OR p.UPC=i.UPC OR p.SKU=i.SKU)")
 			.append(" AND p.IsSummary='N' AND i.AD_Client_ID=p.AD_Client_ID) ")
-			.append(" WHERE M_Product_ID IS NULL AND (ProductValue IS NOT NULL OR UPC IS NOT NULL OR SKU IS NOT NULL)")
+			.append("WHERE M_Product_ID IS NULL AND (ProductValue IS NOT NULL OR UPC IS NOT NULL OR SKU IS NOT NULL)")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Product from Value=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Product, ' ")
-			.append(" WHERE M_Product_ID IS NULL AND (ProductValue IS NOT NULL OR UPC IS NOT NULL OR SKU IS NOT NULL)")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Product, '")
+			.append("WHERE M_Product_ID IS NULL AND (ProductValue IS NOT NULL OR UPC IS NOT NULL OR SKU IS NOT NULL)")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -472,13 +548,13 @@ public class ImportGLJournal extends FTUProcess
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET C_Project_ID=(SELECT p.C_Project_ID FROM C_Project p")
 			.append(" WHERE p.Value=i.ProjectValue AND p.IsSummary='N' AND i.AD_Client_ID=p.AD_Client_ID) ")
-			.append(" WHERE C_Project_ID IS NULL AND ProjectValue IS NOT NULL")
+			.append("WHERE C_Project_ID IS NULL AND ProjectValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Project from Value=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Project, ' ")
-			.append(" WHERE C_Project_ID IS NULL AND ProjectValue IS NOT NULL")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Project, '")
+			.append("WHERE C_Project_ID IS NULL AND ProjectValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -489,13 +565,13 @@ public class ImportGLJournal extends FTUProcess
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET C_Campaign_ID=(SELECT p.C_Campaign_ID FROM C_Campaign p")
 			.append(" WHERE p.Value=i.CampaignValue AND p.IsSummary='N' AND i.AD_Client_ID=p.AD_Client_ID) ")
-			.append(" WHERE C_Campaign_ID IS NULL AND CampaignValue IS NOT NULL")
+			.append("WHERE C_Campaign_ID IS NULL AND CampaignValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Campaign from Value=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Campaign, ' ")
-			.append(" WHERE C_Campaign_ID IS NULL AND CampaignValue IS NOT NULL")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Campaign, '")
+			.append("WHERE C_Campaign_ID IS NULL AND CampaignValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -505,53 +581,47 @@ public class ImportGLJournal extends FTUProcess
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET C_Activity_ID=(SELECT p.C_Activity_ID FROM C_Activity p")
 			.append(" WHERE p.Value=i.ActivityValue AND p.IsSummary='N' AND i.AD_Client_ID=p.AD_Client_ID) ")
-			.append(" WHERE C_Activity_ID IS NULL AND ActivityValue IS NOT NULL")
+			.append("WHERE C_Activity_ID IS NULL AND ActivityValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Activity from Value=" + no);
-		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Activity, ' ")
-			.append(" WHERE C_Activity_ID IS NULL AND (ActivityValue IS NOT NULL AND TRIM(ActivityValue) <>'')")
+	/*	sql = new StringBuilder ("UPDATE I_GLJournal i ")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Activity, '")
+			.append("WHERE C_Activity_ID IS NULL AND ActivityValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
-			log.warning ("Invalid Activity=" + no);
+			log.warning ("Invalid Activity=" + no);*/
 		
 		// Set User1_ID David Castillo
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 				.append("SET User1_ID=(SELECT p.C_ElementValue_ID FROM c_elementvalue p")
+				.append(" JOIN C_Element e on p.C_Element_ID = e.C_Element_ID and e.ElementType = 'U'")
 				.append(" WHERE p.Value=i.User1Value AND p.IsSummary='N' AND i.AD_Client_ID=p.AD_Client_ID) ")
-				.append(" WHERE User1_ID IS NULL AND User1Value IS NOT NULL")
+				.append("WHERE User1_ID IS NULL AND User1Value IS NOT NULL")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 			no = DB.executeUpdate(sql.toString(), get_TrxName());
 			if (log.isLoggable(Level.FINE)) log.fine("Set User1 from Value=" + no);
 		/*	sql = new StringBuilder ("UPDATE I_GLJournal i ")
 				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid User1, '")
-				.append(" WHERE User1_ID IS NULL AND User1Value IS NOT NULL")
+				.append("WHERE User1_ID IS NULL AND User1Value IS NOT NULL")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 			no = DB.executeUpdate(sql.toString(), get_TrxName());
 			if (no != 0)
 				log.warning ("Invalid User1=" + no);*/
-			sql = new StringBuilder ("UPDATE I_GLJournal i ")
-					.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid User1_ID Does not belong to Activity, ' ")
-					.append(" WHERE User1_ID NOT IN (SELECT User1_ID FROM FTU_Activity_User1_Access a WHERE a.C_Activity_ID = i.C_Activity_ID) ")
-					.append(" AND I_IsImported<>'Y' AND User1_ID IS NOT NULL ").append (clientCheck);
-				no = DB.executeUpdate(sql.toString(), get_TrxName());
-				if (no != 0)
-					log.warning ("Invalid User1_ID=" + no);
 
 
 		//	Set SalesRegion
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET C_SalesRegion_ID=(SELECT p.C_SalesRegion_ID FROM C_SalesRegion p")
 			.append(" WHERE p.Value=i.SalesRegionValue AND p.IsSummary='N' AND i.AD_Client_ID=p.AD_Client_ID) ")
-			.append(" WHERE C_SalesRegion_ID IS NULL AND SalesRegionValue IS NOT NULL")
+			.append("WHERE C_SalesRegion_ID IS NULL AND SalesRegionValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set SalesRegion from Value=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid SalesRegion, ' ")
-			.append(" WHERE C_SalesRegion_ID IS NULL AND SalesRegionValue IS NOT NULL")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid SalesRegion, '")
+			.append("WHERE C_SalesRegion_ID IS NULL AND SalesRegionValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -562,13 +632,13 @@ public class ImportGLJournal extends FTUProcess
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET AD_OrgTrx_ID=(SELECT o.AD_Org_ID FROM AD_Org o")
 			.append(" WHERE o.Value=i.OrgTrxValue AND o.IsSummary='N' AND i.AD_Client_ID=o.AD_Client_ID) ")
-			.append(" WHERE AD_OrgTrx_ID IS NULL AND OrgTrxValue IS NOT NULL")
+			.append("WHERE AD_OrgTrx_ID IS NULL AND OrgTrxValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set OrgTrx from Value=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid OrgTrx, ' ")
-			.append(" WHERE AD_OrgTrx_ID IS NULL AND OrgTrxValue IS NOT NULL")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid OrgTrx, '")
+			.append("WHERE AD_OrgTrx_ID IS NULL AND OrgTrxValue IS NOT NULL")
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -578,19 +648,19 @@ public class ImportGLJournal extends FTUProcess
 		//	Source Amounts
 		sql = new StringBuilder ("UPDATE I_GLJournal ")
 			.append("SET AmtSourceDr = 0 ")
-			.append(" WHERE AmtSourceDr IS NULL")
+			.append("WHERE AmtSourceDr IS NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set 0 Source Dr=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal ")
 			.append("SET AmtSourceCr = 0 ")
-			.append(" WHERE AmtSourceCr IS NULL")
+			.append("WHERE AmtSourceCr IS NULL")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set 0 Source Cr=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET I_ErrorMsg=I_ErrorMsg||'WARN=Zero Source Balance, ' ")
-			.append(" WHERE (AmtSourceDr-AmtSourceCr)=0")
+			.append("WHERE (AmtSourceDr-AmtSourceCr)=0")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -599,19 +669,19 @@ public class ImportGLJournal extends FTUProcess
 		//	Accounted Amounts (Only if No Error)
 		sql = new StringBuilder ("UPDATE I_GLJournal ")
 			.append("SET AmtAcctDr = ROUND(AmtSourceDr * CurrencyRate, 5) ")	//	HARDCODED rounding
-			.append(" WHERE AmtAcctDr IS NULL OR AmtAcctDr=0")
+			.append("WHERE AmtAcctDr IS NULL OR AmtAcctDr=0")
 			.append(" AND I_IsImported='N'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Calculate Acct Dr=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal ")
 			.append("SET AmtAcctCr = ROUND(AmtSourceCr * CurrencyRate, 5) ")
-			.append(" WHERE AmtAcctCr IS NULL OR AmtAcctCr=0")
+			.append("WHERE AmtAcctCr IS NULL OR AmtAcctCr=0")
 			.append(" AND I_IsImported='N'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Calculate Acct Cr=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET I_ErrorMsg=I_ErrorMsg||'WARN=Zero Acct Balance, ' ")
-			.append(" WHERE (AmtSourceDr-AmtSourceCr)<>0 AND (AmtAcctDr-AmtAcctCr)=0")
+			.append("WHERE (AmtSourceDr-AmtSourceCr)<>0 AND (AmtAcctDr-AmtAcctCr)=0")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -630,12 +700,43 @@ public class ImportGLJournal extends FTUProcess
 			log.warning ("Check Acct Balance=" + no);
 		*/
 
+		
+		/* validate new fields for san simon and spi*/
+		
+		/*//		Set TrxOrg
+			sql = new StringBuilder ("UPDATE I_GLJournal i ")
+				.append("SET AD_Org_ID=(SELECT o.AD_Org_ID FROM AD_Org o")
+				.append(" WHERE o.Value=i.SPIClientValue) ")
+				.append("WHERE SPIClientValue IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (log.isLoggable(Level.FINE)) log.fine("Set AD_Org_ID from SPIClientValue=" + no);
+			sql = new StringBuilder ("UPDATE I_GLJournal i ")
+				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid SPIClientValue, '")
+				.append("WHERE AD_Org_ID IS NULL AND SPIClientValue IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (no != 0)
+				log.warning ("Invalid AD_Org_ID=" + no);
+		
+			//		Set AmtCreditOrDebit
+			sql = new StringBuilder ("UPDATE I_GLJournal i ")
+				.append("CASE WHEN TrxType = 1 THEN SET AmtSourceDr,AmtAcctDr = Amt ")
+				.append(" ELSE SET AmtSourceCr,AmtAcctCr = Amt END ")
+				.append("WHERE i.Amt IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());*/
+
+		
+		/*end david castillo spi fields */
+		
 		/*********************************************************************/
+
 
 		//	Get Balance
 		sql = new StringBuilder ("SELECT SUM(AmtSourceDr)-SUM(AmtSourceCr), SUM(AmtAcctDr)-SUM(AmtAcctCr) ")
 			.append("FROM I_GLJournal ")
-			.append(" WHERE I_IsImported='N'").append (clientCheck);
+			.append("WHERE I_IsImported='N'").append (clientCheck);
 		PreparedStatement pstmt = null;
 		ResultSet rs = null;
 		try
@@ -706,10 +807,10 @@ public class ImportGLJournal extends FTUProcess
 		int prevOrgId = 0;
 		//	Go through Journal Records
 		sql = new StringBuilder ("SELECT * FROM I_GLJournal ")
-			.append(" WHERE I_IsImported='N'").append (clientCheck)
-			.append(" ORDER BY AD_Org_ID,COALESCE(BatchDocumentNo, TO_NCHAR(I_GLJournal_ID)||' '), COALESCE(JournalDocumentNo, ")
-					.append("TO_NCHAR(I_GLJournal_ID)||' '), C_AcctSchema_ID, PostingType, C_DocType_ID, GL_Category_ID, ")
-					.append("C_Currency_ID, TRUNC(DateAcct), Line, I_GLJournal_ID");
+			.append("WHERE I_IsImported='N'").append (clientCheck)
+			.append(" ORDER BY AD_Org_ID,TRUNC(DateAcct),COALESCE(BatchDocumentNo, I_GLJournal_ID::varchar), COALESCE(JournalDocumentNo, ")
+					.append("I_GLJournal_ID::varchar),	 C_AcctSchema_ID, PostingType, C_DocType_ID, GL_Category_ID, ")
+					.append("C_Currency_ID, Line, I_GLJournal_ID");
 		try
 		{
 			pstmt = DB.prepareStatement (sql.toString (), get_TrxName());
@@ -717,39 +818,7 @@ public class ImportGLJournal extends FTUProcess
 			//
 			while (rs.next())
 			{
-				
 				X_I_GLJournal imp = new X_I_GLJournal (getCtx (), rs, get_TrxName());
-			
-				/** added by david castillo 24/10/2022 verify initial accountNo characters with user1access characters*/
-				
-				if (MSysConfig.getBooleanValue("checkInitialAccountNo", false, getAD_Client_ID()) && (imp.getC_Activity_ID() > 0 && imp.getUser1_ID() > 0)) {
-					
-					boolean validAcc = false;
-					String values = DB.getSQLValueString(get_TrxName(), "SELECT AccountValue FROM FTU_Activity_User1_Access WHERE "
-					+ " C_Activity_ID = ? AND User1_ID = ? ", imp.getC_Activity_ID(), imp.getUser1_ID());
-					
-					if (values != null) {
-					String [] numbers = values.split(",");
-					String initialNo = imp.getAccountValue().substring(0, 2);
-					
-						if (numbers.length > 0)
-						for (String noAcc : numbers) {
-						//	log.log(Level.SEVERE, noAcc);
-						//	log.log(Level.SEVERE, initialNo);
-								if (noAcc.equals(initialNo)) {
-										validAcc = true;
-										imp.setI_ErrorMsg(null);
-										imp.saveEx();
-								}
-						}
-					}
-					
-					if (!validAcc) {
-						imp.setI_ErrorMsg(imp.getI_ErrorMsg() + " Números iniciales de la cuenta inválidos");
-						imp.saveEx();
-						continue;
-					}
-				}
 				int Doc_BPartner_ID =0;// rs.getInt("Doc_BPartner_ID");
 				//	New Batch if Batch Document No changes
 				String impBatchDocumentNo = imp.getBatchDocumentNo();
@@ -842,9 +911,8 @@ public class ImportGLJournal extends FTUProcess
 							//
 							journal.setCurrency (imp.getC_Currency_ID(), imp.getC_ConversionType_ID(), imp.getCurrencyRate());
 							//
-							
-							journal.setDateAcct(imp.getDateAcct());		//	sets Period if not defined
 							journal.setC_Period_ID(imp.getC_Period_ID());
+							journal.setDateAcct(imp.getDateAcct());		//	sets Period if not defined
 							journal.setDateDoc (imp.getDateAcct());
 							
 							
@@ -901,9 +969,8 @@ public class ImportGLJournal extends FTUProcess
 							//
 							journal.setCurrency (imp.getC_Currency_ID(), imp.getC_ConversionType_ID(), imp.getCurrencyRate());
 							//
-						
-							journal.setDateAcct(imp.getDateAcct());		//	sets Period if not defined
 							journal.setC_Period_ID(imp.getC_Period_ID());
+							journal.setDateAcct(imp.getDateAcct());		//	sets Period if not defined
 							journal.setDateDoc (imp.getDateAcct());
 							
 							
@@ -961,6 +1028,7 @@ public class ImportGLJournal extends FTUProcess
 					line.setC_ValidCombination_ID (imp.getC_ValidCombination_ID());
 				//
 				line.setLine (imp.getLine());
+				 
 				line.setAmtSourceCr (imp.getAmtSourceCr());
 				line.setAmtSourceDr (imp.getAmtSourceDr());
 				//line.setAmtAcct (imp.getAmtAcctDr(), imp.getAmtAcctCr());	//	only if not 0
@@ -1004,7 +1072,7 @@ public class ImportGLJournal extends FTUProcess
 		//	Set Error to indicator to not imported
 		sql = new StringBuilder ("UPDATE I_GLJournal ")
 			.append("SET I_IsImported='N', Updated=SysDate ")
-			.append(" WHERE I_IsImported<>'Y'").append(clientCheck);
+			.append("WHERE I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		addLog (0, null, new BigDecimal (no), "@Errors@");
 		//

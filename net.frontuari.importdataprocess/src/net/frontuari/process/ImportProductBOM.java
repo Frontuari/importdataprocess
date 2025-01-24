@@ -16,15 +16,19 @@ package net.frontuari.process;
 import java.util.List;
 import java.util.logging.Level;
 
+import org.adempiere.base.annotation.Process;
 import org.compiere.model.MOrg;
 import org.compiere.model.MProduct;
 import org.compiere.model.MUOM;
 import org.compiere.model.Query;
 import org.compiere.process.ProcessInfoParameter;
+import org.compiere.util.DB;
 import org.compiere.util.Env;
 import org.compiere.util.Msg;
+import org.compiere.wf.MWorkflow;
 
-import net.frontuari.base.FTUProcess;
+import net.frontuari.base.CustomProcess;
+
 import net.frontuari.model.I_I_Product_BOM;
 import org.eevolution.model.MPPProductBOM;
 import org.eevolution.model.MPPProductBOMLine;
@@ -37,8 +41,8 @@ import net.frontuari.model.X_I_Product_BOM;
  * @author alberto.juarez@e-evolution.com, www.e-evolution.com
  * @version $Id: ImportProductBOM.java, v 1.3, 14 sept 2010
  */
-
-public class ImportProductBOM extends FTUProcess {
+@Process
+public class ImportProductBOM extends CustomProcess {
 
 	private boolean m_DeleteOldImported = false;
 	private boolean m_IsImportOnlyNoErrors = true;
@@ -131,7 +135,27 @@ public class ImportProductBOM extends FTUProcess {
 						new Object[] { importBOM.getX12DE355() });				
 			}
 			importBOM.setC_UOM_ID(C_UOM_ID); // uom code
-
+			//  Modified by Joaquin Mora, 2024-11-27
+			//  Sets the Resource and Workflow
+			int AD_Workflow_ID = 0;
+	        if (importBOM.get_ValueAsString("WorkflowValue")!= null) {
+	            AD_Workflow_ID = getID("AD_Workflow", "Value =?", new Object[] { importBOM.get_ValueAsString("WorkflowValue") });
+	        }
+	        if(AD_Workflow_ID>0)
+	        	importBOM.set_ValueOfColumn("AD_Workflow_ID", AD_Workflow_ID);
+	        
+	        int S_Resource_ID = 0;
+	        if (importBOM.get_ValueAsString("ResourceValue") != null) {
+	            S_Resource_ID = getID("S_Resource", "Value=?", new Object[] { importBOM.get_ValueAsString("ResourceValue") });
+	        }
+	        if(S_Resource_ID>0)
+	        	importBOM.set_ValueOfColumn("S_Resource_ID", S_Resource_ID);
+	        if(S_Resource_ID<=0 && AD_Workflow_ID>0) {
+	        	MWorkflow wf = new MWorkflow(getCtx(), AD_Workflow_ID, get_TrxName());
+	        	importBOM.set_ValueOfColumn("S_Resource_ID", wf.getS_Resource_ID());
+	        }
+	        //	End Joaquin Mora
+	        
 			StringBuffer err = new StringBuffer("");
 			if (importBOM.getAD_Org_ID() < 0)
 				err.append(" @AD_Org_ID@ @NotFound@,");
@@ -146,8 +170,10 @@ public class ImportProductBOM extends FTUProcess {
 				importBOM.setI_ErrorMsg(Msg.parseTranslation(getCtx(),
 						err.toString()));
 			}
+			
 			importBOM.saveEx();
 		}
+		
 	}
 
 	/**
@@ -159,17 +185,27 @@ public class ImportProductBOM extends FTUProcess {
 			isImported = false;
 			MPPProductBOM bom = getMPPProductBOM(importBOM);
 			MPPProductBOMLine bomLine = null;
+			int AD_Workflow_ID = importBOM.get_ValueAsInt("AD_Workflow_ID");
+			if(AD_Workflow_ID>0)
+				bom.set_ValueOfColumn("AD_Workflow_ID", AD_Workflow_ID);
+	        int S_Resource_ID = importBOM.get_ValueAsInt("S_Resource_ID");
+	        if(S_Resource_ID>0)
+	        	bom.set_ValueOfColumn("S_Resource_ID", S_Resource_ID);
 			if (bom != null)
 				bomLine = importBOMLine(bom, importBOM);
 			if (bomLine != null) {
-				importBOM.setPP_Product_BOMLine_ID(bomLine
-						.getPP_Product_BOMLine_ID());
+				importBOM.setPP_Product_BOMLine_ID(bomLine.getPP_Product_BOMLine_ID());
 				importBOM.setPP_Product_BOM_ID(bom.get_ID());
 				imported++;
 				isImported = true;
-
+			}else {
+				bomLine = getProductBOMLine(bom, importBOM);
+				importBOM.setPP_Product_BOMLine_ID(bomLine.getPP_Product_BOMLine_ID());
+				importBOM.setPP_Product_BOM_ID(bom.get_ID());
+				imported++;
+				isImported = true;
 			}
-
+			
 			importBOM.setI_IsImported(isImported);
 			importBOM.setProcessed(isImported);
 			importBOM.saveEx();
@@ -218,7 +254,7 @@ public class ImportProductBOM extends FTUProcess {
 		bom.setDescription(importBOM.getDescription());
 		
 		if (importBOM.getDocumentNo() != null)
-		bom.setDocumentNo(importBOM.getDocumentNo());
+		bom.set_ValueOfColumn("DocumentNo", importBOM.getDocumentNo());
 		
 		if (importBOM.getHelp() != null)
 		bom.setHelp(importBOM.getHelp());
@@ -227,6 +263,12 @@ public class ImportProductBOM extends FTUProcess {
 		bom.set_ValueOfColumn("ProductionQty", importBOM.get_Value("ProductionQty"));
 		//	End Jorge Colmenarez
 		bom.setC_UOM_ID(importBOM.getM_Product().getC_UOM_ID());
+		//  Modified by Joaquin Mora, 2024-11-27
+		if(importBOM.get_ValueAsInt("AD_Workflow_ID")>0)
+			bom.set_ValueOfColumn("AD_Workflow_ID", importBOM.get_ValueAsInt("AD_Workflow_ID"));
+		if(importBOM.get_ValueAsInt("S_Resource_ID")>0)
+			bom.set_ValueOfColumn("S_Resource_ID", importBOM.get_ValueAsInt("S_Resource_ID"));
+		//	End Joaquin Mora
 		bom.saveEx();
 
 		return bom;
@@ -248,7 +290,7 @@ public class ImportProductBOM extends FTUProcess {
 		// Component
 		MProduct component = new MProduct(Env.getCtx(),
 				importBOM.getM_BOMProduct_ID(), get_TrxName());
-
+		
 		if (bomLine == null) {
 			bomLine = new MPPProductBOMLine(Env.getCtx(), 0, get_TrxName());
 			bomLine.setAD_Org_ID(importBOM.getAD_Org_ID());
@@ -256,46 +298,53 @@ public class ImportProductBOM extends FTUProcess {
 			bomLine.setM_Product_ID(importBOM.getM_BOMProduct_ID());
 		}
 		if (importBOM.getComponentType() != null)
-		bomLine.setComponentType(importBOM.getComponentType());
+			bomLine.setComponentType(importBOM.getComponentType());
 		
 		if (importBOM.getQtyBOM() != null)
-		bomLine.setQtyBOM(importBOM.getQtyBOM());
+			bomLine.setQtyBOM(importBOM.getQtyBOM());
 		
 		if (importBOM.getQtyBatch() != null)
-		bomLine.setQtyBatch(importBOM.getQtyBatch());
+			bomLine.setQtyBatch(importBOM.getQtyBatch());
 		
 		if (importBOM.getIssueMethod() != null)
-		bomLine.setIssueMethod(importBOM.getIssueMethod());
+			bomLine.setIssueMethod(importBOM.getIssueMethod());
 		
 		bomLine.setIsQtyPercentage(importBOM.isQtyPercentage());
 		
 		if (importBOM.getValidFrom() != null)
-		bomLine.setValidFrom(importBOM.getValidFrom());
+			bomLine.setValidFrom(importBOM.getValidFrom());
 		
 		if (importBOM.getM_ChangeNotice_ID() > 0)
-		bomLine.setM_ChangeNotice_ID(importBOM.getM_ChangeNotice_ID());
+			bomLine.setM_ChangeNotice_ID(importBOM.getM_ChangeNotice_ID());
 		
 		bomLine.setIsCritical(importBOM.isCritical());
 		
 		if (importBOM.getCostAllocationPerc() != null)
-		bomLine.setCostAllocationPerc(importBOM.getCostAllocationPerc());
+			bomLine.setCostAllocationPerc(importBOM.getCostAllocationPerc());
 		
 		if (importBOM.getScrap() != null)
-		bomLine.setScrap(importBOM.getScrap());
+			bomLine.setScrap(importBOM.getScrap());
 		
 		if (importBOM.getAssay() != null)
-		bomLine.setAssay(importBOM.getAssay());
+			bomLine.setAssay(importBOM.getAssay());
 		
 		if (importBOM.getBackflushGroup() != null)
-		bomLine.setBackflushGroup(importBOM.getBackflushGroup());
+			bomLine.setBackflushGroup(importBOM.getBackflushGroup());
 		
 		if (importBOM.getLeadTimeOffset() > 0)
-		bomLine.setLeadTimeOffset(importBOM.getLeadTimeOffset());
+			bomLine.setLeadTimeOffset(importBOM.getLeadTimeOffset());
 		
 		if (importBOM.getC_UOM_ID() > 0)
 			bomLine.setC_UOM_ID(importBOM.getC_UOM_ID());
 		else
 			bomLine.setC_UOM_ID(component.getC_UOM_ID());
+		
+		bomLine.setDescription(component.getName());
+		
+		//	Support for Derivated
+		bomLine.set_ValueOfColumn("IsCritical", importBOM.get_ValueAsBoolean("IsCritical"));
+		if(importBOM.getComponentType().equals(X_I_Product_BOM.COMPONENTTYPE_Variant))
+			bomLine.set_ValueOfColumn("IsDerivative", true);
 		bomLine.saveEx();
 		return bomLine;
 	}

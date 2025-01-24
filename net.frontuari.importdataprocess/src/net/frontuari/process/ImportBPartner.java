@@ -25,6 +25,7 @@ import java.sql.Timestamp;
 import java.util.Properties;
 import java.util.logging.Level;
 
+import org.adempiere.base.annotation.Process;
 import org.adempiere.exceptions.DBException;
 import org.adempiere.model.ImportValidator;
 import org.adempiere.process.ImportProcess;
@@ -39,7 +40,8 @@ import org.compiere.process.ProcessInfo;
 import org.compiere.process.ProcessInfoParameter;
 import org.compiere.util.DB;
 
-import net.frontuari.base.FTUProcess;
+import net.frontuari.base.CustomProcess;
+
 
 /**
  *	Import BPartners from I_BPartner
@@ -55,7 +57,8 @@ import net.frontuari.base.FTUProcess;
  * 	@author Jorge Colmenarez, Frontuari, C.A. http://frontuari.net
  * 			Support for LVE Fields Required, Add Support for Fields for Customer BPartners
  */
-public class ImportBPartner extends FTUProcess
+@Process
+public class ImportBPartner extends CustomProcess
 implements ImportProcess
 {
 	/**	Client to be imported to		*/
@@ -107,7 +110,7 @@ implements ImportProcess
 		//	Delete Old Imported
 		if (m_deleteOldImported)
 		{
-			sql = new StringBuilder ("DELETE I_BPartner ")
+			sql = new StringBuilder ("DELETE FROM I_BPartner ")
 					.append("WHERE I_IsImported='Y'").append(clientCheck);
 			no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 			if (log.isLoggable(Level.FINE)) log.fine("Delete Old Impored =" + no);
@@ -227,7 +230,7 @@ implements ImportProcess
 		//	Existing User ?
 		sql = new StringBuilder ("UPDATE I_BPartner i ")
 				.append("SET (C_BPartner_ID,AD_User_ID)=")
-				.append("(SELECT C_BPartner_ID,AD_User_ID FROM AD_User u ")
+				.append("(SELECT MAX(C_BPartner_ID),MAX(AD_User_ID) FROM AD_User u ")
 				.append("WHERE i.EMail=u.EMail AND u.AD_Client_ID=i.AD_Client_ID) ")
 				.append("WHERE i.EMail IS NOT NULL AND I_IsImported='N'").append(clientCheck);
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
@@ -338,7 +341,7 @@ implements ImportProcess
 		//	Payment Term
 		sql = new StringBuilder ("UPDATE I_BPartner i ")
 				.append("SET C_PaymentTerm_ID=(SELECT C_PaymentTerm_ID FROM C_PaymentTerm pt")
-				.append(" WHERE i.PaymentTerm=pt.Name AND pt.AD_Client_ID IN (0, i.AD_Client_ID)) ")
+				.append(" WHERE i.PaymentTerm=pt.Value AND pt.AD_Client_ID IN (0, i.AD_Client_ID)) ")
 				.append("WHERE C_PaymentTerm_ID IS NULL AND PaymentTerm IS NOT NULL")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());

@@ -10,6 +10,7 @@ import org.compiere.model.MPeriod;
 import org.compiere.model.MSalesRegion;
 import org.compiere.model.MWarehouse;
 
+@org.adempiere.base.Model(table = "M_ForecastLine")
 public class MFTUForecastLine extends MForecastLine {
 
 	/**

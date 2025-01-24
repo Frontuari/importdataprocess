@@ -28,6 +28,7 @@ import org.compiere.util.KeyNamePair;
 /** Generated Model for I_Forecast
  *  @author iDempiere (generated) 
  *  @version Release 7.1 - $Id$ */
+@org.adempiere.base.Model(table = "I_Forecast")
 public class X_I_Forecast extends PO implements I_I_Forecast, I_Persistent 
 {
 

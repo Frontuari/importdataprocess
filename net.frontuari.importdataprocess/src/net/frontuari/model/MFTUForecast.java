@@ -5,6 +5,7 @@ import java.util.Properties;
 
 import org.compiere.model.MForecast;
 
+@org.adempiere.base.Model(table = "M_Forecast")
 public class MFTUForecast extends MForecast {
 
 	/**

@@ -27,6 +27,7 @@ import org.compiere.util.Env;
 /** Generated Model for I_Requisition
  *  @author iDempiere (generated) 
  *  @version Release 7.1 - $Id$ */
+@org.adempiere.base.Model(table = "I_Requisition")
 public class X_I_Requisition extends PO implements I_I_Requisition, I_Persistent 
 {
 

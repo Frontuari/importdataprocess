@@ -6,17 +6,19 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.logging.Level;
 
+import org.adempiere.base.annotation.Process;
 import org.adempiere.exceptions.DBException;
 import org.compiere.model.PO;
 import org.compiere.process.ProcessInfoParameter;
 import org.compiere.util.DB;
 
-import net.frontuari.base.FTUProcess;
+import net.frontuari.base.CustomProcess;
+
 import net.frontuari.model.MFTUForecast;
 import net.frontuari.model.MFTUForecastLine;
 import net.frontuari.model.X_I_Forecast;
-
-public class ImportForecast extends FTUProcess{
+@Process
+public class ImportForecast extends CustomProcess{
 
 	/**	Client to be imported to		*/
 	private int				m_AD_Client_ID = 0;
@@ -50,7 +52,7 @@ public class ImportForecast extends FTUProcess{
 		String clientCheck = getWhereClause();
 		if (m_deleteOldImported)
 		{
-			sql = new StringBuilder ("DELETE I_Forecast ")
+			sql = new StringBuilder ("DELETE FROM I_Forecast ")
 					.append("WHERE I_IsImported='Y'").append(clientCheck);
 			no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 			if (log.isLoggable(Level.FINE)) log.fine("Delete Old Impored =" + no);
@@ -296,8 +298,8 @@ public class ImportForecast extends FTUProcess{
 				{
 					X_I_Forecast IForecast = new X_I_Forecast(getCtx(), rs, get_TrxName());
 					
-					String sqlForecast = "Select M_Forecast_ID from M_Forecast where C_Calendar_ID = ? and C_Year_ID = ? and ForecastType = ?";
-					int M_Forecast_ID = DB.getSQLValue(get_TrxName(), sqlForecast, IForecast.getC_Calendar_ID(),IForecast.getC_Year_ID(),IForecast.getForecastType());
+					String sqlForecast = "Select M_Forecast_ID from M_Forecast where C_Calendar_ID = ? and C_Year_ID = ? and ForecastType = ? AND Name = ?";
+					int M_Forecast_ID = DB.getSQLValue(get_TrxName(), sqlForecast, IForecast.getC_Calendar_ID(),IForecast.getC_Year_ID(),IForecast.getForecastType(),IForecast.getName());
 					
 					if (M_Forecast_ID <= 0)
 						M_Forecast_ID = 0;

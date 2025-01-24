@@ -22,6 +22,7 @@ import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.util.logging.Level;
 
+import org.adempiere.base.annotation.Process;
 import org.adempiere.exceptions.AdempiereException;
 import org.adempiere.model.ImportValidator;
 import org.adempiere.process.ImportProcess;
@@ -36,7 +37,7 @@ import org.compiere.model.MProduct;
 import org.compiere.model.MProductCategoryAcct;
 import org.compiere.model.ModelValidationEngine;
 import org.compiere.model.PO;
-import net.frontuari.model.X_I_Inventory;
+import org.compiere.model.X_I_Inventory;
 import org.compiere.process.DocAction;
 import org.compiere.process.DocumentEngine;
 import org.compiere.process.ProcessInfoParameter;
@@ -48,7 +49,8 @@ import org.compiere.util.Msg;
 import org.compiere.util.TimeUtil;
 import org.compiere.util.ValueNamePair;
 
-import net.frontuari.base.FTUProcess;
+import net.frontuari.base.CustomProcess;
+
 import net.frontuari.model.FTUMInventoryLine;
 
 /**
@@ -61,7 +63,8 @@ import net.frontuari.model.FTUMInventoryLine;
  *  Carlos Ruiz - globalqss - IDEMPIERE-281 Extend Import Inventory to support also internal use
  *  Deepak Pansheriya - logilite - IDEMPIERE-2314 Making import inventory process extendible
  */
-public class ImportInventory extends FTUProcess implements ImportProcess
+@Process
+public class ImportInventory extends CustomProcess implements ImportProcess
 {
 	/**	Client to be imported to		*/
 	private int				p_AD_Client_ID = 0;
@@ -93,10 +96,6 @@ public class ImportInventory extends FTUProcess implements ImportProcess
 	private int 			p_C_DocType_ID = 0;
 	/** Conversion Type for Update Costing */
 	private int 			p_C_ConversionType_ID = 0;
-	
-	/**	Only validate, don't import		*/
-	private boolean			p_IsValidateOnly = false;
-	
 	/**
 	 *  Prepare - e.g., get Parameters.
 	 */
@@ -134,8 +133,6 @@ public class ImportInventory extends FTUProcess implements ImportProcess
 				p_C_DocType_ID = ((BigDecimal)para[i].getParameter()).intValue();
 			else if (name.equals("C_ConversionType_ID"))
 				p_C_ConversionType_ID = ((BigDecimal)para[i].getParameter()).intValue();
-			else if (name.equals("IsValidateOnly"))
-				p_IsValidateOnly = para[i].getParameterAsBoolean();
 			else
 				log.log(Level.WARNING, "Unknown Parameter: " + name);
 		}
@@ -300,7 +297,6 @@ public class ImportInventory extends FTUProcess implements ImportProcess
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate (sql.toString (), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Product from Value=" + no);
-		
 		//product value changed to product name
 		sql = new StringBuilder ("UPDATE I_Inventory i ")
 			  .append("SET M_Product_ID=(SELECT MAX(M_Product_ID) FROM M_Product p")
@@ -315,8 +311,6 @@ public class ImportInventory extends FTUProcess implements ImportProcess
 				  .append("WHERE M_Product_ID IS NULL AND UPC IS NOT NULL")
 				  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 			no = DB.executeUpdate (sql.toString (), get_TrxName());
-			
-			
 		if (log.isLoggable(Level.FINE)) log.fine("Set Product from UPC=" + no);
 		sql = new StringBuilder ("UPDATE I_Inventory ")
 			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No Product, ' ")
@@ -367,56 +361,11 @@ public class ImportInventory extends FTUProcess implements ImportProcess
 		no = DB.executeUpdate (sql.toString (), get_TrxName());
 		if (no != 0)
 			log.warning ("Required charge=" + no);
-		
-		//added by david castillo 30/09/2022 support for ad_org_id, user1_id, activity and documentno
 
-		//	Org_ID
-		sql = new StringBuilder ("UPDATE I_Inventory i ")
-			.append("SET AD_Org_ID=COALESCE((SELECT d.AD_Org_ID FROM AD_Org d")
-			.append(" WHERE d.Value=i.OrgValue AND  i.AD_Client_ID=d.AD_Client_ID)," + p_AD_Org_ID+ ")")
-			.append(" WHERE OrgValue IS NOT NULL")
-			.append(" AND I_IsImported<>'Y'").append (clientCheck);
-		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Set AD_Org_ID=" + no);
-		
-		//User1
-		sql = new StringBuilder ("UPDATE I_Inventory o ")
-				  .append("SET User1_ID=(SELECT C_ElementValue_ID FROM C_ElementValue c")
-				  .append(" WHERE o.User1Name=c.Name AND o.AD_Client_ID=c.AD_Client_ID) ")
-				  .append("WHERE User1_ID IS NULL AND User1Name IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
-			no = DB.executeUpdate(sql.toString(), get_TrxName());
-			if (log.isLoggable(Level.FINE)) log.fine("Set User1=" + no);
-			// Set proper error message
-			sql = new StringBuilder ("UPDATE I_Inventory ")
-				  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Not Found User1_ID, ' ")
-				  .append("WHERE User1_ID IS NULL AND User1Name IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
-			no = DB.executeUpdate(sql.toString(), get_TrxName());
-			if (no != 0)
-				log.warning("No User1Name=" + no);
-			
-		sql = new StringBuilder ("UPDATE I_Inventory o ")
-					  .append("SET C_Activity_ID=(SELECT C_Activity_ID FROM C_Activity c")
-					  .append(" WHERE o.ActivityName=c.Name AND o.AD_Client_ID=c.AD_Client_ID) ")
-					  .append("WHERE C_Activity_ID IS NULL AND ActivityName IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
-				no = DB.executeUpdate(sql.toString(), get_TrxName());
-				if (log.isLoggable(Level.FINE)) log.fine("Set Activity=" + no);
-				// Set proper error message
-				sql = new StringBuilder ("UPDATE I_Inventory ")
-					  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No Activity, ' ")
-					  .append("WHERE C_Activity_ID IS NULL AND ActivityName IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
-				no = DB.executeUpdate(sql.toString(), get_TrxName());
-				if (no != 0)
-					log.warning("No Activity=" + no);
-				
-		//end david castillo
 		ModelValidationEngine.get().fireImportValidate(this, null, null, ImportValidator.TIMING_AFTER_VALIDATE);
 		
 		commitEx();
-		if (p_IsValidateOnly)
-		{
-			return "Validated";
-		}
-		//	--
+		
 		/*********************************************************************/
 
 		MInventory inventory = null;
@@ -476,16 +425,6 @@ public class ImportInventory extends FTUProcess implements ImportProcess
 					inventory.setM_Warehouse_ID(imp.getM_Warehouse_ID());
 					inventory.setMovementDate(MovementDate);
 					
-					//added saving of user1, activity and document no
-					if (imp.getDocumentNo() != null)
-					inventory.setDocumentNo(imp.getDocumentNo());
-					
-					if (imp.getUser1_ID()>0)
-						inventory.setUser1_ID(imp.getUser1_ID());
-					
-					if (imp.getC_Activity_ID()>0)
-						inventory.setC_Activity_ID(imp.getC_Activity_ID());
-					//po
 					ModelValidationEngine.get().fireImportValidate(this, imp, inventory, ImportValidator.TIMING_BEFORE_IMPORT);
 					//
 					if (!inventory.save())
@@ -618,15 +557,15 @@ public class ImportInventory extends FTUProcess implements ImportProcess
 	protected void updateCosting(X_I_Inventory imp, MProduct product,
 			MInventoryLine line) {
 		String costingLevel = null;
+		
 		if(product.getM_Product_Category_ID() > 0){
 			MProductCategoryAcct pca = MProductCategoryAcct.get(getCtx(), product.getM_Product_Category_ID(), p_C_AcctSchema_ID, get_TrxName());
 			costingLevel = pca.getCostingLevel();
 			if (costingLevel == null) {
 				costingLevel = acctSchema.getCostingLevel();
 			}
-
 		}
-
+		int lineID = 0;
 		int costOrgID = p_AD_OrgTrx_ID;
 		int costASI = line.getM_AttributeSetInstance_ID();
 		if (MAcctSchema.COSTINGLEVEL_Client.equals(costingLevel)){
@@ -654,19 +593,41 @@ public class ImportInventory extends FTUProcess implements ImportProcess
 			costingDoc.setDocAction(DocAction.ACTION_Complete);
 			costingDoc.saveEx();
 		}
+		//	Modified by Jorge Colmenarez, 2023-12-01 19:44
+				//	Prevent create lines when currentcost and newcost it's same
+				if(cost.getCurrentCostPrice().compareTo(imp.getCurrentCostPrice())!=0) {
+		//	Prevent create excessive product adjust cost lines 
+		if(!MAcctSchema.COSTINGLEVEL_BatchLot.equals(costingLevel)) {
+			lineID = DB.getSQLValue(get_TrxName(), "SELECT MAX(M_InventoryLine_ID) FROM M_InventoryLine WHERE M_Inventory_ID = ? AND M_Product_ID = ?", costingDoc.get_ID(),cost.getM_Product_ID());
+			if(lineID<=0) {
+				FTUMInventoryLine costingLine = new FTUMInventoryLine(getCtx(), 0, get_TrxName());
+				costingLine.setM_Inventory_ID(costingDoc.getM_Inventory_ID());
+				costingLine.setM_Product_ID(cost.getM_Product_ID());
+				costingLine.setCurrentCostPrice(cost.getCurrentCostPrice());
+				costingLine.setNewCostPrice(imp.getCurrentCostPrice());
+				costingLine.setM_Locator_ID(0);
+				costingLine.setAD_Org_ID(imp.getAD_Org_ID());
+				costingLine.setM_AttributeSetInstance_ID(costASI);
+				costingLine.saveEx();
+				lineID = costingLine.getM_InventoryLine_ID();
+			}
+		}else {
+			FTUMInventoryLine costingLine = new FTUMInventoryLine(getCtx(), 0, get_TrxName());
+			costingLine.setM_Inventory_ID(costingDoc.getM_Inventory_ID());
+			costingLine.setM_Product_ID(cost.getM_Product_ID());
+			costingLine.setCurrentCostPrice(cost.getCurrentCostPrice());
+			costingLine.setNewCostPrice(imp.getCurrentCostPrice());
+			costingLine.setM_Locator_ID(0);
+			costingLine.setAD_Org_ID(imp.getAD_Org_ID());
+			costingLine.setM_AttributeSetInstance_ID(costASI);
+			costingLine.saveEx();
+			lineID = costingLine.getM_InventoryLine_ID();
+		}
+		//	End Jorge Colmenarez
 		
-		FTUMInventoryLine costingLine = new FTUMInventoryLine(getCtx(), 0, get_TrxName());
-		costingLine.setM_Inventory_ID(costingDoc.getM_Inventory_ID());
-		costingLine.setM_Product_ID(cost.getM_Product_ID());
-		costingLine.setCurrentCostPrice(cost.getCurrentCostPrice());
-		costingLine.setNewCostPrice(imp.getCurrentCostPrice());
-		costingLine.setM_Locator_ID(0);
-		costingLine.setAD_Org_ID(imp.getAD_Org_ID());
-		costingLine.setM_AttributeSetInstance_ID(costASI);
-		costingLine.saveEx();
-		
-		imp.setM_CostingLine_ID(costingLine.getM_InventoryLine_ID());
+		imp.setM_CostingLine_ID(lineID);
 		imp.saveEx();
+		}
 	}
 
 

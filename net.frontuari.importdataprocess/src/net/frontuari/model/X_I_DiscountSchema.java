@@ -29,6 +29,7 @@ import org.compiere.util.Env;
 /** Generated Model for I_DiscountSchema
  *  @author iDempiere (generated) 
  *  @version Release 7.1 - $Id$ */
+@org.adempiere.base.Model(table = "I_DiscountSchema")
 public class X_I_DiscountSchema extends PO implements I_I_DiscountSchema, I_Persistent 
 {
 

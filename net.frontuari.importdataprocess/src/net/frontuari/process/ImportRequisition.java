@@ -23,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.util.logging.Level;
 
+import org.adempiere.base.annotation.Process;
 import org.adempiere.model.ImportValidator;
 import org.adempiere.process.ImportProcess;
 import org.compiere.model.MRequisition;
@@ -32,7 +33,8 @@ import org.compiere.process.ProcessInfoParameter;
 import org.compiere.util.DB;
 import org.compiere.util.Env;
 
-import net.frontuari.base.FTUProcess;
+import net.frontuari.base.CustomProcess;
+
 import net.frontuari.model.X_I_Requisition;
 
 /**
@@ -40,7 +42,8 @@ import net.frontuari.model.X_I_Requisition;
  *  @author Jorge Colmenarez, Frontuari, C.A. https://frontuari.net
  * 	@version 	$Id: ImportRequisition.java,v 1.0 2021/07/11 10:08 jlctmaster Exp $
  */
-public class ImportRequisition extends FTUProcess implements ImportProcess {
+@Process
+public class ImportRequisition extends CustomProcess implements ImportProcess {
 
 	/**	Client to be imported to		*/
 	private int				m_AD_Client_ID = 0;

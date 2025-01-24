@@ -23,12 +23,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.logging.Level;
 
+import org.adempiere.base.annotation.Process;
 import org.adempiere.exceptions.DBException;
 import org.adempiere.model.ImportValidator;
 import org.adempiere.process.ImportProcess;
 import org.compiere.model.ModelValidationEngine;
 
-import net.frontuari.base.FTUProcess;
+import net.frontuari.base.CustomProcess;
 import net.frontuari.model.X_I_Employee;
 
 import org.compiere.process.ProcessInfoParameter;
@@ -41,7 +42,8 @@ import org.eevolution.model.X_HR_Employee;
  * 	@author 	Jorge Colmenarez
  * 	@version 	$Id: ImportEmployee.java,v 1.0 2021/03/25 12:46 jlctmaster Exp $
  */
-public class ImportEmployee extends FTUProcess implements ImportProcess {
+@Process
+public class ImportEmployee extends CustomProcess implements ImportProcess {
 
 	/**	Client to be imported to		*/
 	private int				m_AD_Client_ID = 0;
@@ -122,7 +124,7 @@ public class ImportEmployee extends FTUProcess implements ImportProcess {
 		if (log.isLoggable(Level.FINE)) log.fine("Set BPartner=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Employee ")
-				.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid BPartner, ' ")
+				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid BPartner, ' ")
 				.append("WHERE C_BPartner_ID IS NULL")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
@@ -139,7 +141,7 @@ public class ImportEmployee extends FTUProcess implements ImportProcess {
 		if (log.isLoggable(Level.FINE)) log.fine("Set Department=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Employee ")
-				.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Department, ' ")
+				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Department, ' ")
 				.append("WHERE HR_Department_ID IS NULL AND DepartmentValue IS NOT NULL")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
@@ -156,7 +158,7 @@ public class ImportEmployee extends FTUProcess implements ImportProcess {
 		if (log.isLoggable(Level.FINE)) log.fine("Set Job=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Employee ")
-				.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Job, ' ")
+				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Job, ' ")
 				.append("WHERE HR_Job_ID IS NULL AND JobValue IS NOT NULL")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
@@ -173,7 +175,7 @@ public class ImportEmployee extends FTUProcess implements ImportProcess {
 		if (log.isLoggable(Level.FINE)) log.fine("Set Payroll=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Employee ")
-				.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Payroll, ' ")
+				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Payroll, ' ")
 				.append("WHERE HR_Payroll_ID IS NULL AND PayrollValue IS NOT NULL")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
@@ -190,7 +192,7 @@ public class ImportEmployee extends FTUProcess implements ImportProcess {
 		if (log.isLoggable(Level.FINE)) log.fine("Set Activity=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Employee ")
-				.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Activity, ' ")
+				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Activity, ' ")
 				.append("WHERE C_Activity_ID IS NULL AND ActivityValue IS NOT NULL")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
@@ -259,7 +261,7 @@ public class ImportEmployee extends FTUProcess implements ImportProcess {
 				else
 				{
 					sql = new StringBuilder ("UPDATE I_Employee i ")
-							.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||")
+							.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||")
 					.append("'Cannot Insert Employee, ' ")
 					.append("WHERE I_Employee_ID=").append(impE.getI_Employee_ID());
 					DB.executeUpdateEx(sql.toString(), get_TrxName());

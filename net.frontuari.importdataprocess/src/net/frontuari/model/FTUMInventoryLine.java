@@ -15,7 +15,7 @@ import org.compiere.model.MProduct;
 import org.compiere.process.DocAction;
 import org.compiere.util.DB;
 import org.compiere.util.Msg;
-
+@org.adempiere.base.Model(table = "M_InventoryLine")
 public class FTUMInventoryLine extends MInventoryLine{
 
 	public FTUMInventoryLine(Properties ctx, int M_InventoryLine_ID, String trxName) {
@@ -111,10 +111,10 @@ public class FTUMInventoryLine extends MInventoryLine{
 				log.saveError("Quantity", Msg.getElement(getCtx(), COLUMNNAME_QtyCount));
 				return false;
 			}
-			if (getQtyInternalUse().signum() == 0 && !getParent().getDocAction().equals(DocAction.ACTION_Void)) {
+			/*if (getQtyInternalUse().signum() == 0 && !getParent().getDocAction().equals(DocAction.ACTION_Void)) {
 				log.saveError("FillMandatory", Msg.getElement(getCtx(), COLUMNNAME_QtyInternalUse));
 				return false;
-			}
+			}*/
 
 		} else if (MDocType.DOCSUBTYPEINV_PhysicalInventory.equals(docSubTypeInv)) {
 

@@ -29,6 +29,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.logging.Level;
 
+import org.adempiere.base.annotation.Process;
 import org.compiere.model.MBPartner;
 import org.compiere.model.MPriceList;
 import org.compiere.model.MPriceListVersion;
@@ -40,14 +41,16 @@ import org.compiere.util.AdempiereUserError;
 import org.compiere.util.DB;
 import org.compiere.util.Env;
 
-import net.frontuari.base.FTUProcess;
+import net.frontuari.base.CustomProcess;
+
 
 /**
  *	Import Price Lists from I_PriceList
  *
  * 	@author 	Carlos Ruiz
  */
-public class ImportPriceList extends FTUProcess
+@Process
+public class ImportPriceList extends CustomProcess
 {
 	/**	Client to be imported to		*/
 	private int				m_AD_Client_ID = 0;
@@ -111,7 +114,7 @@ public class ImportPriceList extends FTUProcess
 		//	Delete Old Imported
 		if (m_deleteOldImported)
 		{
-			sql = new StringBuilder("DELETE I_PriceList "
+			sql = new StringBuilder("DELETE FROM I_PriceList "
 				+ "WHERE I_IsImported='Y'").append(clientCheck);
 			no = DB.executeUpdate(sql.toString(), get_TrxName());
 			if (log.isLoggable(Level.INFO)) log.info("Delete Old Impored =" + no);

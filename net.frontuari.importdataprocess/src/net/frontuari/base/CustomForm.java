@@ -16,19 +16,23 @@
  * Copyright (C) 2025 www.frontuari.net and contributors (see README.md file).
  */
 
-package net.frontuari.component;
+package net.frontuari.base;
 
-import org.adempiere.base.AnnotationBasedEventManager;
+import org.adempiere.webui.panel.ADForm;
+import org.adempiere.webui.panel.IFormController;
+import org.zkoss.zk.ui.event.Event;
+import org.zkoss.zk.ui.event.EventListener;
 
 /**
- * Event Factory
+ * Custom class for forms
  */
-public class EventFactory extends AnnotationBasedEventManager {
+public abstract class CustomForm extends ADForm implements IFormController, EventListener<Event> {
+
+	private static final long serialVersionUID = 1393259812994414770L;
 
 	@Override
-	public String[] getPackages() {
-		return new String[] { "net.frontuari.event" };
+	public ADForm getForm() {
+		return this;
 	}
 
 }
-

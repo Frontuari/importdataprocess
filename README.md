@@ -1,7 +1,7 @@
-# Import Data Process
+# importdataprocess
 
-- Copyright: 2020 Frontuari, C.A. <http://frontuari.net>
-- Repository: https://github.com/frontuari/net.frontuari.importdataprocess
+- Copyright: 2025 www.frontuari.net
+- Repository: <https://github.com/Frontuari/net.frontuari.importdataprocess.git>
 - License: GPL 2
 
 ## Description
@@ -16,12 +16,11 @@ Put the plugin description here
 
 - iDempiere Plugin [net.frontuari.importdataprocess](net.frontuari.importdataprocess)
 - iDempiere Unit Test Fragment [net.frontuari.importdataprocess.test](net.frontuari.importdataprocess.test)
-- iDempiere Target Platform [net.frontuari.importdataprocess.targetplatform](net.frontuari.importdataprocess.targetplatform)
 
 ## Prerequisites
 
-- Java 11, commands `java` and `javac`.
-- iDempiere 7.1.0
+- Java 17, commands `java` and `javac`.
+- iDempiere 12.0.0
 - Set `IDEMPIERE_REPOSITORY` env variable
 
 ## Features/Documentation
@@ -36,18 +35,8 @@ Put the plugin description here
 
 - Put the documentation/links here
 
-## Commands
+## Compile Plugin
 
-Compile plugin and run tests:
+A target platform is necessary to **compile** an iDempiere plugin.
 
-```bash
-./build
-```
-
-Use the parameter `debug` for debug mode example:
-
-```bash
-./build debug
-```
-
-To use `.\build.bat` for windows.
+For more information about how to build a plugin go to [https://github.com/ingeint/idempiere-target-platform-plugin](https://github.com/ingeint/idempiere-target-platform-plugin)

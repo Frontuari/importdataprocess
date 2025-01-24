@@ -23,6 +23,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.logging.Level;
 
+import org.adempiere.base.annotation.Process;
 import org.compiere.model.MBPartner;
 import org.compiere.model.MBPartnerLocation;
 import org.compiere.model.MInOut;
@@ -36,7 +37,9 @@ import org.compiere.process.ProcessInfoParameter;
 import org.compiere.util.DB;
 import org.compiere.util.Env;
 
-import net.frontuari.base.FTUProcess;
+import net.frontuari.base.CustomProcess;
+import net.frontuari.custom.model.FTUMInvoice;
+
 
 /**
  *	Import Invoice from I_Invoice
@@ -44,7 +47,8 @@ import net.frontuari.base.FTUProcess;
  * 	@author 	Jorg Janke
  * 	@version 	$Id: ImportInvoice.java,v 1.1 2007/09/05 09:27:31 cruiz Exp $
  */
-public class ImportInvoice extends FTUProcess
+@Process
+public class ImportInvoice extends CustomProcess
 {
 	/**	Client to be imported to		*/
 	private int				m_AD_Client_ID = 0;
@@ -112,7 +116,7 @@ public class ImportInvoice extends FTUProcess
 		//	Delete Old Imported
 		if (m_deleteOldImported)
 		{
-			sql = new StringBuilder ("DELETE I_Invoice ")
+			sql = new StringBuilder ("DELETE FROM I_Invoice ")
 				  .append("WHERE I_IsImported='Y'").append (clientCheck);
 			no = DB.executeUpdate(sql.toString(), get_TrxName());
 			if (log.isLoggable(Level.FINE)) log.fine("Delete Old Impored =" + no);
@@ -382,6 +386,14 @@ public class ImportInvoice extends FTUProcess
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set BP from Value=" + no);
+		//	BP from TaxID
+		sql = new StringBuilder ("UPDATE I_Invoice o ")
+			  .append("SET C_BPartner_ID=(SELECT MAX(C_BPartner_ID) FROM C_BPartner bp")
+			  .append(" WHERE o.BPTaxID=bp.TaxID AND o.AD_Client_ID=bp.AD_Client_ID) ")
+			  .append("WHERE C_BPartner_ID IS NULL AND BPTaxID IS NOT NULL")
+			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set BP from TaxID=" + no);
 		//	Default BP
 		sql = new StringBuilder ("UPDATE I_Invoice o ")
 			  .append("SET C_BPartner_ID=(SELECT C_BPartnerCashTrx_ID FROM AD_ClientInfo c")
@@ -390,9 +402,6 @@ public class ImportInvoice extends FTUProcess
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Default BP=" + no);
-
-		
-		
 		//BP Location By Name
 		sql = new StringBuilder ("UPDATE I_Invoice o ")
 		  .append("SET C_BPartner_Location_ID=(SELECT C_BPartner_Location_ID FROM C_BPartner_Location c")
@@ -401,36 +410,39 @@ public class ImportInvoice extends FTUProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set C_BPartner_Location_ID=" + no);
 		
-		//	Existing Location ? Exact Match
-		sql = new StringBuilder ("UPDATE I_Invoice o ")
-			  .append("SET C_BPartner_Location_ID=(SELECT C_BPartner_Location_ID")
-			  .append(" FROM C_BPartner_Location bpl INNER JOIN C_Location l ON (bpl.C_Location_ID=l.C_Location_ID)")
-			  .append(" WHERE o.C_BPartner_ID=bpl.C_BPartner_ID AND bpl.AD_Client_ID=o.AD_Client_ID")
-			  .append(" AND DUMP(o.Address1)=DUMP(l.Address1) AND DUMP(o.Address2)=DUMP(l.Address2)")
-			  .append(" AND DUMP(o.City)=DUMP(l.City) AND DUMP(o.Postal)=DUMP(l.Postal)")
-			  .append(" AND o.C_Region_ID=l.C_Region_ID AND o.C_Country_ID=l.C_Country_ID) ")
-			  .append("WHERE C_BPartner_ID IS NOT NULL AND C_BPartner_Location_ID IS NULL")
-			  .append(" AND I_IsImported='N'").append (clientCheck);
-		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Found Location=" + no);
-		//	Set Location from BPartner
-		sql = new StringBuilder ("UPDATE I_Invoice o ")
-			  .append("SET C_BPartner_Location_ID=(SELECT MAX(C_BPartner_Location_ID) FROM C_BPartner_Location l")
-			  .append(" WHERE l.C_BPartner_ID=o.C_BPartner_ID AND o.AD_Client_ID=l.AD_Client_ID")
-			  .append(" AND ((l.IsBillTo='Y' AND o.IsSOTrx='Y') OR o.IsSOTrx='N')")
-			  .append(") ")
-			  .append("WHERE C_BPartner_ID IS NOT NULL AND C_BPartner_Location_ID IS NULL")
-			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
-		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Set BP Location from BP=" + no);
-		//
-		sql = new StringBuilder ("UPDATE I_Invoice ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No BP Location, ' ")
-			  .append("WHERE C_BPartner_ID IS NOT NULL AND C_BPartner_Location_ID IS NULL")
-			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
-		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
-			log.warning ("No BP Location=" + no);
+//		Existing Location ? Exact Match
+			sql = new StringBuilder ("UPDATE I_Invoice o ")
+				  .append("SET C_BPartner_Location_ID=(SELECT C_BPartner_Location_ID")
+				  .append(" FROM C_BPartner_Location bpl INNER JOIN C_Location l ON (bpl.C_Location_ID=l.C_Location_ID)")
+				  .append(" WHERE o.C_BPartner_ID=bpl.C_BPartner_ID AND bpl.AD_Client_ID=o.AD_Client_ID")
+				  .append(" AND ((o.Address1 IS NULL AND l.Address1 IS NULL) OR o.Address1=l.Address1)")
+				  .append(" AND ((o.Address2 IS NULL AND l.Address2 IS NULL) OR o.Address2=l.Address2)")
+				  .append(" AND ((o.City IS NULL AND l.City IS NULL) OR o.City=l.City)")
+				  .append(" AND ((o.Postal IS NULL AND l.Postal IS NULL) OR o.Postal=l.Postal)")
+				  .append(" AND COALESCE(o.C_Region_ID,0)=COALESCE(l.C_Region_ID,0)")
+				  .append(" AND COALESCE(o.C_Country_ID,0)=COALESCE(l.C_Country_ID,0)) ")
+				  .append("WHERE C_BPartner_ID IS NOT NULL AND C_BPartner_Location_ID IS NULL")
+				  .append(" AND I_IsImported='N'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (log.isLoggable(Level.FINE)) log.fine("Found Location=" + no);
+			//	Set Location from BPartner
+			sql = new StringBuilder ("UPDATE I_Invoice o ")
+				  .append("SET C_BPartner_Location_ID=(SELECT MAX(C_BPartner_Location_ID) FROM C_BPartner_Location l")
+				  .append(" WHERE l.C_BPartner_ID=o.C_BPartner_ID AND o.AD_Client_ID=l.AD_Client_ID")
+				  .append(" AND ((l.IsBillTo='Y' AND o.IsSOTrx='Y') OR o.IsSOTrx='N')")
+				  .append(") ")
+				  .append("WHERE C_BPartner_ID IS NOT NULL AND C_BPartner_Location_ID IS NULL")
+				  .append(" AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (log.isLoggable(Level.FINE)) log.fine("Set BP Location from BP=" + no);
+			//
+			sql = new StringBuilder ("UPDATE I_Invoice ")
+				  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No BP Location, ' ")
+				  .append("WHERE C_BPartner_ID IS NOT NULL AND C_BPartner_Location_ID IS NULL")
+				  .append(" AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (no != 0)
+				log.warning ("No BP Location=" + no);
 
 		//	Set Country
 		/**
@@ -623,12 +635,7 @@ public class ImportInvoice extends FTUProcess
 				if (no != 0)
 				log.warning("No SalesRep_ID=" + no);
 						
-			
-							
-		
-
-				
-			//C_Order_ID
+		// C_Order_ID
 		sql = new StringBuilder ("UPDATE I_Invoice i ")
 		  .append("SET C_Order_ID=(SELECT MAX(C_Order_ID) FROM C_Order o")
 		  .append(" WHERE i.OrderDocumentNo=o.DocumentNo AND i.AD_Client_ID=o.AD_Client_ID AND i.AD_Org_ID = o.AD_Org_ID) ")
@@ -692,8 +699,7 @@ public class ImportInvoice extends FTUProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 			if (no != 0)
 			log.warning ("No Invoice Affected=" + no);
-			
-		
+
 		commitEx();
 		
 		if (p_IsValidateOnly)
@@ -704,7 +710,8 @@ public class ImportInvoice extends FTUProcess
 
 		//	Go through Invoice Records w/o C_BPartner_ID
 		sql = new StringBuilder ("SELECT * FROM I_Invoice ")
-			  .append("WHERE I_IsImported='N' AND C_BPartner_ID IS NULL").append (clientCheck);
+			  .append("WHERE I_IsImported='N' AND C_BPartner_ID IS NULL").append (clientCheck)
+			  .append(" ORDER BY DocumentNo,C_BPartner_ID,C_DocType_ID,DateInvoiced ASC ");
 		PreparedStatement pstmt = null;
 		ResultSet rs = null;
 		try
@@ -847,7 +854,7 @@ public class ImportInvoice extends FTUProcess
 		//	Go through Invoice Records w/o
 		sql = new StringBuilder ("SELECT * FROM I_Invoice ")
 			  .append("WHERE I_IsImported='N'").append (clientCheck)
-			.append(" ORDER BY C_BPartner_ID, C_BPartner_Location_ID, I_Invoice_ID");
+			.append(" ORDER BY DocumentNo, C_BPartner_ID, C_DocType_ID, DateInvoiced, C_BPartner_Location_ID, I_Invoice_ID");
 		try
 		{
 			pstmt = DB.prepareStatement (sql.toString(), get_TrxName());
@@ -855,9 +862,12 @@ public class ImportInvoice extends FTUProcess
 			//	Group Change
 			int oldC_BPartner_ID = 0;
 			int oldC_BPartner_Location_ID = 0;
+			//	Added by Jorge Colmenarez, 2023-09-29 14:06, Distinct by DocType
+			int oldC_DocType_ID = 0;
+			//	End Jorge Colmenarez
 			String oldDocumentNo = "";
 			//
-			MInvoice invoice = null;
+			FTUMInvoice invoice = null;
 			int lineNo = 0;
 			while (rs.next ())
 			{
@@ -868,7 +878,10 @@ public class ImportInvoice extends FTUProcess
 				//	New Invoice
 				if (oldC_BPartner_ID != imp.getC_BPartner_ID() 
 					|| oldC_BPartner_Location_ID != imp.getC_BPartner_Location_ID()
-					|| !oldDocumentNo.equals(cmpDocumentNo)	)
+					|| !oldDocumentNo.equals(cmpDocumentNo)	
+					//	Added by Jorge Colmenarez, 2023-09-29 14:06, Distinct by DocType
+					|| oldC_DocType_ID != imp.getC_DocType_ID())
+					//	End Jorge Colmenarez
 				{
 					if (invoice != null)
 					{//dont process if m_docAction is empty
@@ -884,10 +897,13 @@ public class ImportInvoice extends FTUProcess
 					oldC_BPartner_ID = imp.getC_BPartner_ID();
 					oldC_BPartner_Location_ID = imp.getC_BPartner_Location_ID();
 					oldDocumentNo = imp.getDocumentNo();
+					//	Added by Jorge Colmenarez, 2023-09-29 14:06, Distinct by DocType
+					oldC_DocType_ID = imp.getC_DocType_ID();
+					//	End Jorge Colmenarez
 					if (oldDocumentNo == null)
 						oldDocumentNo = "";
 					//
-					invoice = new MInvoice (getCtx(), 0, get_TrxName());
+					invoice = new FTUMInvoice (getCtx(), 0, get_TrxName());
 					invoice.setClientOrg (imp.getAD_Client_ID(), imp.getAD_Org_ID());
 					invoice.setC_DocTypeTarget_ID(imp.getC_DocType_ID());
 					invoice.setIsSOTrx(imp.isSOTrx());
@@ -946,6 +962,16 @@ public class ImportInvoice extends FTUProcess
 					int C_ConversionType_ID = imp.get_ValueAsInt("C_ConversionType_ID");
 					if(C_ConversionType_ID>0)
 						invoice.setC_ConversionType_ID(C_ConversionType_ID);
+					//	Added by Jorge Colmenarez, 2023-09-28 09:23
+					//	Support for Override Currency Rate
+					invoice.setIsOverrideCurrencyRate(imp.get_ValueAsBoolean("IsOverrideCurrencyRate"));
+					BigDecimal currencyRate = (BigDecimal)imp.get_Value("CurrencyRate");
+					log.warning("Tasa="+currencyRate);
+					if(currencyRate.compareTo(BigDecimal.ZERO)!=0)
+						invoice.setCurrencyRate(currencyRate);
+					else
+						invoice.setCurrencyRate(new BigDecimal(0.00001));
+					//	End Jorge Colmenarez
 					
 					//	Add Order to Invoice
 					if(imp.get_ValueAsInt("M_InOut_ID") > 0 && imp.get_ValueAsInt("C_Order_ID") == 0)
@@ -1024,13 +1050,14 @@ public class ImportInvoice extends FTUProcess
 			{
 				// Dont process if m_docAction Is Empty
 				if (!m_docAction.equals("")) {
-				if(!invoice.processIt (m_docAction)) {
-					log.warning("Invoice Process Failed: " + invoice + " - " + invoice.getProcessMsg());
-					throw new IllegalStateException("Invoice Process Failed: " + invoice + " - " + invoice.getProcessMsg());
-					
-				}
+					if(!invoice.processIt (m_docAction)) {
+						log.warning("Invoice Process Failed: " + invoice + " - " + invoice.getProcessMsg());
+						throw new IllegalStateException("Invoice Process Failed: " + invoice + " - " + invoice.getProcessMsg());
+						
+					}
 				}
 				invoice.saveEx();
+				commitEx();
 			}
 		}
 		catch (Exception e)

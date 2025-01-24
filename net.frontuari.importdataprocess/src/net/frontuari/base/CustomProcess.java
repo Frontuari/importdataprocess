@@ -16,19 +16,36 @@
  * Copyright (C) 2025 www.frontuari.net and contributors (see README.md file).
  */
 
-package net.frontuari.component;
+package net.frontuari.base;
 
-import org.adempiere.base.AnnotationBasedEventManager;
+import org.compiere.process.ProcessInfoParameter;
+import org.compiere.process.SvrProcess;
 
 /**
- * Event Factory
+ * Custom Process
  */
-public class EventFactory extends AnnotationBasedEventManager {
+public abstract class CustomProcess extends SvrProcess {
 
 	@Override
-	public String[] getPackages() {
-		return new String[] { "net.frontuari.event" };
+	protected void prepare() {
+		// empty on purpose
+	}
+
+	/**
+	 * Get parameter
+	 * 
+	 * @param parameterName Parameter name to find
+	 * @return null if no exist
+	 */
+	protected Object getParameter(String parameterName) {
+		ProcessInfoParameter[] para = getParameter();
+		for (int i = 0; i < para.length; i++) {
+			String name = para[i].getParameterName();
+			if (name != null)
+				if (name.equals(parameterName))
+					return para[i].getParameter();
+		}
+		return null;
 	}
 
 }
-

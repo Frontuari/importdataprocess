@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.logging.Level;
 
+import org.adempiere.base.annotation.Process;
 import org.compiere.model.I_M_Movement;
 import org.compiere.model.I_M_MovementLine;
 import org.compiere.model.MAttributeSetInstance;
@@ -43,8 +44,7 @@ import org.compiere.util.Env;
 import org.compiere.util.Msg;
 import org.eevolution.model.X_I_Movement;
 
-import net.frontuari.base.FTUProcess;
-import net.frontuari.model.FTUMMovementLine;
+import net.frontuari.base.CustomProcess;
 
 /**
  *	Import Inventory Movement from I_M_Movemen
@@ -56,8 +56,8 @@ import net.frontuari.model.FTUMMovementLine;
  *  @version	$Id: ImportInventoryMovement.java,v 1.1 2021-11-12 10:20
  *  @feature	Support for Import ASI & ASITo	
  */
-
-public class ImportInventoryMove extends FTUProcess {
+@Process
+public class ImportInventoryMove extends CustomProcess {
 
 	private boolean			m_DeleteOldImported = false;
 
@@ -206,11 +206,11 @@ public class ImportInventoryMove extends FTUProcess {
 	{
 		isImported = false;
 		
-		FTUMMovementLine moveLine = (FTUMMovementLine) getMInventoryMoveLine(move, imove);
+		MMovementLine moveLine = (MMovementLine) getMInventoryMoveLine(move, imove);
 		
 		if(moveLine == null)
 		{
-			moveLine = new FTUMMovementLine(Env.getCtx(), 0 , get_TrxName());
+			moveLine = new MMovementLine(Env.getCtx(), 0 , get_TrxName());
 		}
 		
 		try

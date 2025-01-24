@@ -25,6 +25,7 @@ import org.compiere.model.*;
 /** Generated Model for I_Employee
  *  @author iDempiere (generated) 
  *  @version Release 7.1 - $Id$ */
+@org.adempiere.base.Model(table = "I_Employee")
 public class X_I_Employee extends PO implements I_I_Employee, I_Persistent 
 {
 

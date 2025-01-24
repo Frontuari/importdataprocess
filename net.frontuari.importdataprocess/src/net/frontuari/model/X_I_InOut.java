@@ -27,6 +27,7 @@ import org.compiere.util.Env;
 /** Generated Model for I_InOut
  *  @author iDempiere (generated) 
  *  @version Release 7.1 - $Id$ */
+@org.adempiere.base.Model(table = "I_InOut")
 public class X_I_InOut extends PO implements I_I_InOut, I_Persistent 
 {
 

@@ -13,46 +13,22 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Copyright (C) 2020 Frontuari, C.A. <http://frontuari.net> and contributors (see README.md file).
+ * Copyright (C) 2025 www.frontuari.net and contributors (see README.md file).
  */
 
 package net.frontuari.component;
 
-
-import net.frontuari.base.FTUModelFactory;
-import net.frontuari.model.FTUMInventoryLine;
-import net.frontuari.model.X_I_DiscountSchema;
-import net.frontuari.model.X_I_Employee;
-import net.frontuari.model.X_I_Forecast;
-import net.frontuari.model.X_I_InOut;
-import net.frontuari.model.X_I_Inventory;
-import net.frontuari.model.X_I_Product_BOM;
-import net.frontuari.model.X_I_Requisition;
+import org.adempiere.base.AnnotationBasedModelFactory;
 
 /**
  * Model Factory
  */
-public class ModelFactory extends FTUModelFactory {
+public class ModelFactory extends AnnotationBasedModelFactory {
 
-	/**
-	 * For initialize class. Register the models to build
-	 * 
-	 * <pre>
-	 * protected void initialize() {
-	 * 	registerModel(MTableExample.Table_Name, MTableExample.class);
-	 * }
-	 * </pre>
-	 */
 	@Override
-	protected void initialize() {
-		registerModel(X_I_DiscountSchema.Table_Name, X_I_DiscountSchema.class);
-		registerModel(X_I_Employee.Table_Name, X_I_Employee.class);
-		registerModel(X_I_InOut.Table_Name, X_I_InOut.class);
-		registerModel(X_I_Product_BOM.Table_Name, X_I_Product_BOM.class);
-		registerModel(X_I_Requisition.Table_Name, X_I_Requisition.class);
-		registerModel(X_I_Forecast.Table_Name, X_I_Forecast.class);
-		registerModel(FTUMInventoryLine.Table_Name, FTUMInventoryLine.class);
-		registerModel(X_I_Inventory.Table_Name, X_I_Inventory.class);
+	protected String[] getPackages() {
+		return new String[] { "net.frontuari.model" };
 	}
 
 }
+
