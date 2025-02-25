@@ -228,13 +228,12 @@ implements ImportProcess
 		if (log.isLoggable(Level.CONFIG)) log.config("Invalid Greeting=" + no);
 
 		//	Existing User ?
-		sql = new StringBuilder ("UPDATE I_BPartner i ")
-				.append("SET (C_BPartner_ID,AD_User_ID)=")
-				.append("(SELECT MAX(C_BPartner_ID),MAX(AD_User_ID) FROM AD_User u ")
-				.append("WHERE i.EMail=u.EMail AND u.AD_Client_ID=i.AD_Client_ID) ")
-				.append("WHERE i.EMail IS NOT NULL AND I_IsImported='N'").append(clientCheck);
+		/*sql = new StringBuilder ("UPDATE I_BPartner i ")
+		        .append("SET AD_User_ID=(SELECT MAX(AD_User_ID) FROM AD_User u ")
+		        .append("WHERE i.EMail=u.EMail AND u.AD_Client_ID=i.AD_Client_ID) ")
+		        .append("WHERE i.EMail IS NOT NULL AND I_IsImported='N'").append(clientCheck);
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Found EMail User=" + no);
+		if (log.isLoggable(Level.FINE)) log.fine("Found EMail User=" + no);*/
 
 		//	Existing BPartner ? Match Value
 		sql = new StringBuilder ("UPDATE I_BPartner i ")
@@ -614,65 +613,7 @@ implements ImportProcess
 
 				//	****	Create/Update Contact	****
 				MUser user = null;
-				if (impBP.getAD_User_ID() != 0)
-				{
-					user = new MUser (getCtx(), impBP.getAD_User_ID(), get_TrxName());
-					if (user.getC_BPartner_ID() == 0)
-						user.setC_BPartner_ID(bp.getC_BPartner_ID());
-					else if (user.getC_BPartner_ID() != bp.getC_BPartner_ID())
-					{
-						rollback();
-						noInsert--;
-						sql = new StringBuilder ("UPDATE I_BPartner i ")
-								.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||")
-						.append("'BP of User <> BP, ' ")
-						.append("WHERE I_BPartner_ID=").append(impBP.getI_BPartner_ID());
-						DB.executeUpdateEx(sql.toString(), get_TrxName());
-						continue;
-					}
-					if (impBP.getC_Greeting_ID() != 0)
-						user.setC_Greeting_ID(impBP.getC_Greeting_ID());
-					String name = impBP.getContactName();
-					if (name == null || name.length() == 0)
-						name = impBP.getEMail();
-					user.setName(name);
-					if (impBP.getTitle() != null)
-						user.setTitle(impBP.getTitle());
-					if (impBP.getContactDescription() != null)
-						user.setDescription(impBP.getContactDescription());
-					if (impBP.getComments() != null)
-						user.setComments(impBP.getComments());
-					if (impBP.getPhone() != null)
-						user.setPhone(impBP.getPhone());
-					if (impBP.getPhone2() != null)
-						user.setPhone2(impBP.getPhone2());
-					if (impBP.getFax() != null)
-						user.setFax(impBP.getFax());
-					if (impBP.getEMail() != null)
-						user.setEMail(impBP.getEMail());
-					if (impBP.getBirthday() != null)
-						user.setBirthday(impBP.getBirthday());
-					if (bpl != null)
-						user.setC_BPartner_Location_ID(bpl.getC_BPartner_Location_ID());
-					ModelValidationEngine.get().fireImportValidate(this, impBP, user, ImportValidator.TIMING_AFTER_IMPORT);
-					if (user.save())
-					{
-						msglog = new StringBuilder("Update BP Contact - ").append(user.getAD_User_ID());
-						if (log.isLoggable(Level.FINEST)) log.finest(msglog.toString());
-					}
-					else
-					{
-						rollback();
-						noInsert--;
-						sql = new StringBuilder ("UPDATE I_BPartner i ")
-								.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||")
-						.append("'Cannot Update BP Contact, ' ")
-						.append("WHERE I_BPartner_ID=").append(impBP.getI_BPartner_ID());
-						DB.executeUpdateEx(sql.toString(), get_TrxName());
-						continue;
-					}
-				}
-				else 	//	New Contact
+	//	New Contact
 					if (impBP.getContactName() != null || impBP.getEMail() != null)
 					{
 						if(bp != null)
@@ -682,7 +623,7 @@ implements ImportProcess
 								user.setC_Greeting_ID(impBP.getC_Greeting_ID());
 							String name = impBP.getContactName();
 							if (name == null || name.length() == 0)
-								name = impBP.getEMail();
+								name = impBP.getName();
 							user.setName(name);
 							user.setTitle(impBP.getTitle());
 							user.setDescription(impBP.getContactDescription());
