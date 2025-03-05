@@ -129,7 +129,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		
 		sql = new StringBuilder ("UPDATE I_Requisition o ")
-				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Org, '")
+				.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Org, '")
 				.append("WHERE (AD_OrgTrx_ID IS NULL OR AD_OrgTrx_ID=0")
 				.append(" OR EXISTS (SELECT * FROM AD_Org oo WHERE o.AD_OrgTrx_ID=oo.AD_Org_ID AND (oo.IsSummary='Y' OR oo.IsActive='N')))")
 				.append(" AND I_IsImported<>'Y'").append (clientCheck);
@@ -145,7 +145,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set DocType=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")	//	Error Invalid Doc Type Name
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid DocTypeName, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid DocTypeName, ' ")
 			  .append("WHERE C_DocType_ID IS NULL AND DocTypeName IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -160,7 +160,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set User=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")	//	Error Invalid User Name
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid UserName, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid UserName, ' ")
 			  .append("WHERE AD_User_ID IS NULL AND UserName IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -175,7 +175,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Warehouse=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")	//	Error Invalid Warehouse
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Warehouse, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Warehouse, ' ")
 			  .append("WHERE M_Warehouse_ID IS NULL AND WarehouseValue IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -190,7 +190,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set PriceList=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")	//	Error Invalid PriceList
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid PriceList, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid PriceList, ' ")
 			  .append("WHERE M_PriceList_ID IS NULL AND PriceListName IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -205,7 +205,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Activity=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")	//	Error Invalid Activity
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Activity, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Activity, ' ")
 			  .append("WHERE C_Activity_ID IS NULL AND ActivityValue IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -220,7 +220,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Project=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")	//	Error Invalid Project
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Project, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Project, ' ")
 			  .append("WHERE C_Project_ID IS NULL AND ProjectValue IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -235,7 +235,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Campaign=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")	//	Error Invalid Campaign
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Campaign, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Campaign, ' ")
 			  .append("WHERE C_Campaign_ID IS NULL AND CampaignValue IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -251,7 +251,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Cost Center=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")	//	Error Invalid User1
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Cost Center, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Cost Center, ' ")
 			  .append("WHERE User1_ID IS NULL AND User1Value IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -266,7 +266,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set BPartner=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")	//	Error Invalid Business Partner
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Business Partner, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Business Partner, ' ")
 			  .append("WHERE C_BPartner_ID IS NULL AND BPartnerValue IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -296,7 +296,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Product fom SKU=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Product, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Product, ' ")
 			  .append("WHERE M_Product_ID IS NULL AND (ProductValue IS NOT NULL OR UPC IS NOT NULL OR SKU IS NOT NULL)")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -311,7 +311,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Charge=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")
-				  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Charge, ' ")
+				  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Charge, ' ")
 				  .append("WHERE C_Charge_ID IS NULL AND (ChargeName IS NOT NULL)")
 				  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -320,7 +320,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		//
 		
 		sql = new StringBuilder ("UPDATE I_Requisition ")
-				  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Product and Charge, ' ")
+				  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Product and Charge, ' ")
 				  .append("WHERE M_Product_ID IS NOT NULL AND C_Charge_ID IS NOT NULL ")
 				  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -343,7 +343,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 			if (log.isLoggable(Level.INFO)) log.info("Set UOM=" + no);
 			//
 		sql = new StringBuilder ("UPDATE I_Requisition ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Not Found UOM, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Not Found UOM, ' ")
 			  .append("WHERE C_UoM_ID IS NULL AND (UoMName IS NOT NULL OR X12DE355 IS NOT NULL) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
