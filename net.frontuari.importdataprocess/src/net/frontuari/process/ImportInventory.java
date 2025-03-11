@@ -177,7 +177,7 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 		//	Delete Old Imported
 		if (p_DeleteOldImported)
 		{
-			sql = new StringBuilder ("DELETE I_Inventory ")
+			sql = new StringBuilder ("DELETE FROM I_Inventory ")
 				  .append("WHERE I_IsImported='Y'").append (clientCheck);
 			no = DB.executeUpdate (sql.toString (), get_TrxName());
 			if (log.isLoggable(Level.FINE)) log.fine("Delete Old Imported=" + no);
@@ -445,7 +445,12 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 				}
 				MProduct product = new MProduct(getCtx(), imp.getM_Product_ID(), get_TrxName());
 				//	Line
-				int M_AttributeSetInstance_ID = generateASI(product,imp);
+				int M_AttributeSetInstance_ID = 0;
+				if(imp.get_ValueAsInt("M_AttributeSetInstance_ID")>0) {
+					 M_AttributeSetInstance_ID = imp.get_ValueAsInt("M_AttributeSetInstance_ID");
+				}else {
+					 M_AttributeSetInstance_ID = generateASI(product,imp);
+				}
 
 				MInventoryLine line = new MInventoryLine (inventory, 
 					imp.getM_Locator_ID(), imp.getM_Product_ID(), M_AttributeSetInstance_ID,
@@ -506,7 +511,7 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 						msg.append(docType.getName());
 					else
 						msg.append(((PO)docType).get_Translation(I_C_DocType.COLUMNNAME_Name));
-					throw new AdempiereUserError(msg.toString());
+					throw new AdempiereUserError(msg.toString()+" "+costingDoc.getProcessMsg());
 				}
 				costingDoc.saveEx();
 			}
@@ -594,12 +599,25 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 			costingDoc.saveEx();
 		}
 		//	Modified by Jorge Colmenarez, 2023-12-01 19:44
-				//	Prevent create lines when currentcost and newcost it's same
-				if(cost.getCurrentCostPrice().compareTo(imp.getCurrentCostPrice())!=0) {
-		//	Prevent create excessive product adjust cost lines 
-		if(!MAcctSchema.COSTINGLEVEL_BatchLot.equals(costingLevel)) {
-			lineID = DB.getSQLValue(get_TrxName(), "SELECT MAX(M_InventoryLine_ID) FROM M_InventoryLine WHERE M_Inventory_ID = ? AND M_Product_ID = ?", costingDoc.get_ID(),cost.getM_Product_ID());
-			if(lineID<=0) {
+		//	Prevent create lines when currentcost and newcost it's same
+		if(cost.getCurrentCostPrice().compareTo(imp.getCurrentCostPrice())!=0) {
+			//	Prevent create excessive product adjust cost lines 
+			if(!MAcctSchema.COSTINGLEVEL_BatchLot.equals(costingLevel)) {
+				lineID = DB.getSQLValue(get_TrxName(), "SELECT MAX(M_InventoryLine_ID) FROM M_InventoryLine WHERE M_Inventory_ID = ? AND M_Product_ID = ?", costingDoc.get_ID(),cost.getM_Product_ID());
+				if(lineID<=0) {
+					FTUMInventoryLine costingLine = new FTUMInventoryLine(getCtx(), 0, get_TrxName());
+					costingLine.setM_Inventory_ID(costingDoc.getM_Inventory_ID());
+					costingLine.setM_Product_ID(cost.getM_Product_ID());
+					costingLine.setCurrentCostPrice(cost.getCurrentCostPrice());
+					costingLine.setNewCostPrice(imp.getCurrentCostPrice());
+					costingLine.setM_Locator_ID(0);
+					costingLine.setAD_Org_ID(imp.getAD_Org_ID());
+					log.warning("Lote para costo"+costASI);
+					costingLine.setM_AttributeSetInstance_ID(costASI);
+					costingLine.saveEx();
+					lineID = costingLine.getM_InventoryLine_ID();
+				}
+			}else {
 				FTUMInventoryLine costingLine = new FTUMInventoryLine(getCtx(), 0, get_TrxName());
 				costingLine.setM_Inventory_ID(costingDoc.getM_Inventory_ID());
 				costingLine.setM_Product_ID(cost.getM_Product_ID());
@@ -607,35 +625,21 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 				costingLine.setNewCostPrice(imp.getCurrentCostPrice());
 				costingLine.setM_Locator_ID(0);
 				costingLine.setAD_Org_ID(imp.getAD_Org_ID());
+				log.warning("Lote para costo"+costASI);
 				costingLine.setM_AttributeSetInstance_ID(costASI);
 				costingLine.saveEx();
 				lineID = costingLine.getM_InventoryLine_ID();
 			}
-		}else {
-			FTUMInventoryLine costingLine = new FTUMInventoryLine(getCtx(), 0, get_TrxName());
-			costingLine.setM_Inventory_ID(costingDoc.getM_Inventory_ID());
-			costingLine.setM_Product_ID(cost.getM_Product_ID());
-			costingLine.setCurrentCostPrice(cost.getCurrentCostPrice());
-			costingLine.setNewCostPrice(imp.getCurrentCostPrice());
-			costingLine.setM_Locator_ID(0);
-			costingLine.setAD_Org_ID(imp.getAD_Org_ID());
-			costingLine.setM_AttributeSetInstance_ID(costASI);
-			costingLine.saveEx();
-			lineID = costingLine.getM_InventoryLine_ID();
-		}
-		//	End Jorge Colmenarez
-		
-		imp.setM_CostingLine_ID(lineID);
-		imp.saveEx();
+			//	End Jorge Colmenarez
+			imp.setM_CostingLine_ID(lineID);
+			imp.saveEx();
 		}
 	}
-
 
 	@Override
 	public String getImportTableName() {
 		return X_I_Inventory.Table_Name;
 	}
-
 
 	@Override
 	public String getWhereClause() {

@@ -590,24 +590,34 @@ public class ImportOrder extends CustomProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning("No UoM=" + no);
-		
-					//	instancia atribute
+
+		//	instancia atribute
 		//Added by Jose Vasquez 27/05/2024
 		sql = new StringBuilder ("UPDATE I_Order o ")
-		.append("SET M_AttributesetInstance_ID=(SELECT M_AttributesetInstance_ID FROM M_AttributesetInstance m")
-		.append(" WHERE o.AttributesetInstance = m.M_AttributesetInstance_ID) ")
-		.append("WHERE M_AttributesetInstance_ID IS NULL AND AttributesetInstance IS NOT NULL")
-		.append(" AND I_IsImported<>'Y'").append (clientCheck);
-no = DB.executeUpdate(sql.toString(), get_TrxName());
-if (log.isLoggable(Level.FINE)) log.fine("Set Attributeset Instance=" + no);
-
-sql = new StringBuilder ("UPDATE I_Order ")
-	.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Attributeset Instance, ' ")
-	.append("WHERE M_AttributesetInstance_ID IS NULL AND AttributesetInstance IS NOT NULL")
-	.append(" AND I_IsImported<>'Y'").append (clientCheck);
-no = DB.executeUpdate(sql.toString(), get_TrxName());
-if (no != 0)
-  log.warning ("Invalid Attributeset Instance =" + no);
+				  .append("SET M_AttributesetInstance_ID=(SELECT M_AttributesetInstance_ID FROM M_AttributesetInstance m")
+				  .append(" WHERE o.AttributesetInstance = m.M_AttributesetInstance_ID) ")
+				  .append("WHERE M_AttributesetInstance_ID IS NULL AND AttributesetInstance IS NOT NULL")
+				  .append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Attributeset Instance=" + no);
+		
+		//	instancia atribute
+		//Added by Jose Vasquez 27/05/2024
+		sql = new StringBuilder ("UPDATE I_Order o ")
+				.append("SET M_AttributesetInstance_ID=(SELECT M_AttributesetInstance_ID FROM M_AttributesetInstance m")
+				.append(" WHERE o.AttributesetInstance = m.M_AttributesetInstance_ID) ")
+				.append("WHERE M_AttributesetInstance_ID IS NULL AND AttributesetInstance IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Attributeset Instance=" + no);
+		
+		sql = new StringBuilder ("UPDATE I_Order ")
+			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Attributeset Instance, ' ")
+			  .append("WHERE M_AttributesetInstance_ID IS NULL AND AttributesetInstance IS NOT NULL")
+			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (no != 0)
+			log.warning ("Invalid Attributeset Instance =" + no);
 
 		commitEx();
 		
@@ -757,8 +767,9 @@ if (no != 0)
 
 		//	Go through Order Records w/o
 		sql = new StringBuilder ("SELECT * FROM I_Order ")
-			  .append("WHERE I_IsImported='N'").append (clientCheck)
-			  .append(" ORDER BY AD_Org_ID,C_BPartner_ID,C_DocType_ID,DocumentNo,C_Currency_ID, BillTo_ID, C_BPartner_Location_ID, I_Order_ID");
+			.append("WHERE I_IsImported='N'").append (clientCheck)
+			.append(" ORDER BY AD_Org_ID,C_BPartner_ID,C_DocType_ID,DocumentNo,C_Currency_ID, BillTo_ID, C_BPartner_Location_ID, I_Order_ID");
+		
 		try
 		{
 			pstmt = DB.prepareStatement (sql.toString(), get_TrxName());
@@ -879,8 +890,8 @@ if (no != 0)
 				line.setQty(imp.getQtyOrdered());
 				line.setPrice();
 				if (imp.getPriceActual().compareTo(Env.ZERO) != 0)
-					line.setPrice(imp.getPriceActual());
-					if (imp.get_ValueAsInt("AttributesetInstance") != 0)
+					line.setPrice(imp.getPriceActual());					
+				if (imp.get_ValueAsInt("AttributesetInstance") != 0)
 					line.setM_AttributeSetInstance_ID(imp.get_ValueAsInt("AttributesetInstance"));
 				if (imp.getC_Tax_ID() != 0)
 					line.setC_Tax_ID(imp.getC_Tax_ID());

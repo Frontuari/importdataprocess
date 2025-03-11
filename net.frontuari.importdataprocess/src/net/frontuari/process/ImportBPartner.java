@@ -39,6 +39,7 @@ import org.compiere.model.X_I_BPartner;
 import org.compiere.process.ProcessInfo;
 import org.compiere.process.ProcessInfoParameter;
 import org.compiere.util.DB;
+import org.compiere.util.Env;
 
 import net.frontuari.base.CustomProcess;
 
@@ -226,14 +227,6 @@ implements ImportProcess
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.CONFIG)) log.config("Invalid Greeting=" + no);
-
-		//	Existing User ?
-		/*sql = new StringBuilder ("UPDATE I_BPartner i ")
-		        .append("SET AD_User_ID=(SELECT MAX(AD_User_ID) FROM AD_User u ")
-		        .append("WHERE i.EMail=u.EMail AND u.AD_Client_ID=i.AD_Client_ID) ")
-		        .append("WHERE i.EMail IS NOT NULL AND I_IsImported='N'").append(clientCheck);
-		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Found EMail User=" + no);*/
 
 		//	Existing BPartner ? Match Value
 		sql = new StringBuilder ("UPDATE I_BPartner i ")
@@ -747,21 +740,18 @@ implements ImportProcess
 
 	@Override
 	public Properties getCtx() {
-		// TODO Auto-generated method stub
-		return null;
+		return Env.getCtx();
 	}
 
 
 	@Override
 	public String get_TrxName() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 
 
 	@Override
 	public ProcessInfo getProcessInfo() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 	
