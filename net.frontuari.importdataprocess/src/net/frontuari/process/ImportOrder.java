@@ -151,6 +151,10 @@ public class ImportOrder extends CustomProcess
 			  .append("SET C_DocType_ID=(SELECT C_DocType_ID FROM C_DocType d WHERE d.Name=o.DocTypeName")
 			  .append(" AND d.DocBaseType='POO' AND o.AD_Client_ID=d.AD_Client_ID) ")
 			  .append("WHERE C_DocType_ID IS NULL AND IsSOTrx='N' AND DocTypeName IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
+		sql = new StringBuilder ("UPDATE I_Order o ")	//	IPO Document Type Name
+				  .append("SET C_DocType_ID=(SELECT C_DocType_ID FROM C_DocType d WHERE d.Name=o.DocTypeName")
+				  .append(" AND d.DocBaseType='IPO' AND o.AD_Client_ID=d.AD_Client_ID) ")
+				  .append("WHERE C_DocType_ID IS NULL AND IsSOTrx='N' AND DocTypeName IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set PO DocType=" + no);
 		sql = new StringBuilder ("UPDATE I_Order o ")	//	SO Document Type Name
@@ -161,7 +165,7 @@ public class ImportOrder extends CustomProcess
 		if (log.isLoggable(Level.FINE)) log.fine("Set SO DocType=" + no);
 		sql = new StringBuilder ("UPDATE I_Order o ")
 			  .append("SET C_DocType_ID=(SELECT C_DocType_ID FROM C_DocType d WHERE d.Name=o.DocTypeName")
-			  .append(" AND d.DocBaseType IN ('SOO','POO') AND o.AD_Client_ID=d.AD_Client_ID) ")
+			  .append(" AND d.DocBaseType IN ('SOO','POO','IPO') AND o.AD_Client_ID=d.AD_Client_ID) ")
 			//+ "WHERE C_DocType_ID IS NULL AND IsSOTrx IS NULL AND DocTypeName IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
 			  .append("WHERE C_DocType_ID IS NULL AND DocTypeName IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
