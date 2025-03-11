@@ -57,10 +57,10 @@ public class ImportOrder extends CustomProcess
 	private boolean			m_deleteOldImported = false;
 	/**	Document Action					*/
 	private String			m_docAction = MOrder.DOCACTION_Prepare;
-
-
 	/** Effective						*/
 	private Timestamp		m_DateValue = null;
+	/**	Only validate, don't import		*/
+	private boolean			p_IsValidateOnly = false;
 
 	/**
 	 *  Prepare - e.g., get Parameters.
@@ -77,6 +77,10 @@ public class ImportOrder extends CustomProcess
 				m_AD_Org_ID = ((BigDecimal)para[i].getParameter()).intValue();
 			else if (name.equals("DeleteOldImported"))
 				m_deleteOldImported = "Y".equals(para[i].getParameter());
+			else if (name.equals("DeleteOldImported"))
+				m_deleteOldImported = "Y".equals(para[i].getParameter());
+			else if (name.equals("IsValidateOnly"))
+				p_IsValidateOnly = para[i].getParameterAsBoolean();
 			else if (name.equals("DocAction"))
 				m_docAction = (String)para[i].getParameter();
 			else
@@ -138,7 +142,7 @@ public class ImportOrder extends CustomProcess
 		if (log.isLoggable(Level.INFO)) log.info ("Reset=" + no);
 		
 		sql = new StringBuilder ("UPDATE I_Order o ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Org, '")
+			.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Org, '")
 			.append("WHERE (AD_OrgTrx_ID IS NULL OR AD_OrgTrx_ID=0")
 			.append(" OR EXISTS (SELECT * FROM AD_Org oo WHERE o.AD_OrgTrx_ID=oo.AD_Org_ID AND (oo.IsSummary='Y' OR oo.IsActive='N')))")
 			.append(" AND I_IsImported<>'Y'").append (clientCheck);
@@ -171,7 +175,7 @@ public class ImportOrder extends CustomProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set DocType=" + no);
 		sql = new StringBuilder ("UPDATE I_Order ")	//	Error Invalid Doc Type Name
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid DocTypeName, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid DocTypeName, ' ")
 			  .append("WHERE C_DocType_ID IS NULL AND DocTypeName IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -197,7 +201,7 @@ public class ImportOrder extends CustomProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Default DocType=" + no);
 		sql = new StringBuilder ("UPDATE I_Order ")	// No DocType
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No DocType, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No DocType, ' ")
 			  .append("WHERE C_DocType_ID IS NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -229,7 +233,7 @@ public class ImportOrder extends CustomProcess
 			if (log.isLoggable(Level.INFO)) log.info("Set Currency=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Order ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No Currency,' ")
+			.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No Currency,' ")
 			.append("WHERE C_Currency_ID IS NULL ")
 			.append("AND I_IsImported<>'E' ")
 			.append(" AND I_IsImported<>'Y'").append(clientCheck);
@@ -272,7 +276,7 @@ public class ImportOrder extends CustomProcess
 		if (log.isLoggable(Level.FINE)) log.fine("Set PriceList=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Order ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No PriceList, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No PriceList, ' ")
 			  .append("WHERE M_PriceList_ID IS NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -288,7 +292,7 @@ public class ImportOrder extends CustomProcess
 		if (log.isLoggable(Level.FINE)) log.fine("Set Order Source=" + no);
 		// Set proper error message
 		sql = new StringBuilder ("UPDATE I_Order ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Not Found Order Source, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Not Found Order Source, ' ")
 			  .append("WHERE C_OrderSource_ID IS NULL AND C_OrderSourceValue IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -309,7 +313,7 @@ public class ImportOrder extends CustomProcess
 		if (log.isLoggable(Level.FINE)) log.fine("Set Default PaymentTerm=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Order ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No PaymentTerm, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No PaymentTerm, ' ")
 			  .append("WHERE C_PaymentTerm_ID IS NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -343,7 +347,7 @@ public class ImportOrder extends CustomProcess
 			if (log.isLoggable(Level.FINE)) log.fine("Set Only Client Warehouse=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Order ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No Warehouse, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No Warehouse, ' ")
 			  .append("WHERE M_Warehouse_ID IS NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -429,7 +433,7 @@ public class ImportOrder extends CustomProcess
 		if (log.isLoggable(Level.FINE)) log.fine("Set BP Location from BP=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Order ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No BP Location, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No BP Location, ' ")
 			  .append("WHERE C_BPartner_ID IS NOT NULL AND (BillTo_ID IS NULL OR C_BPartner_Location_ID IS NULL)")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -455,7 +459,7 @@ public class ImportOrder extends CustomProcess
 		if (log.isLoggable(Level.FINE)) log.fine("Set Country=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Order ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Country, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Country, ' ")
 			  .append("WHERE C_BPartner_ID IS NULL AND C_Country_ID IS NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -482,7 +486,7 @@ public class ImportOrder extends CustomProcess
 		if (log.isLoggable(Level.FINE)) log.fine("Set Region=" + no);
 		//
 		sql = new StringBuilder ("UPDATE I_Order o ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Region, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Region, ' ")
 			  .append("WHERE C_BPartner_ID IS NULL AND C_Region_ID IS NULL ")
 			  .append(" AND EXISTS (SELECT * FROM C_Country c")
 			  .append(" WHERE c.C_Country_ID=o.C_Country_ID AND c.HasRegion='Y')")
@@ -514,7 +518,7 @@ public class ImportOrder extends CustomProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Product fom SKU=" + no);
 		sql = new StringBuilder ("UPDATE I_Order ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Product, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Product, ' ")
 			  .append("WHERE M_Product_ID IS NULL AND (ProductValue IS NOT NULL OR UPC IS NOT NULL OR SKU IS NOT NULL)")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -529,7 +533,7 @@ public class ImportOrder extends CustomProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Charge=" + no);
 		sql = new StringBuilder ("UPDATE I_Order ")
-				  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Charge, ' ")
+				  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Charge, ' ")
 				  .append("WHERE C_Charge_ID IS NULL AND (ChargeName IS NOT NULL)")
 				  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -538,7 +542,7 @@ public class ImportOrder extends CustomProcess
 		//
 		
 		sql = new StringBuilder ("UPDATE I_Order ")
-				  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Product and Charge, ' ")
+				  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Product and Charge, ' ")
 				  .append("WHERE M_Product_ID IS NOT NULL AND C_Charge_ID IS NOT NULL ")
 				  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -561,7 +565,7 @@ public class ImportOrder extends CustomProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Tax=" + no);
 		sql = new StringBuilder ("UPDATE I_Order ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Tax, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Tax, ' ")
 			  .append("WHERE C_Tax_ID IS NULL AND TaxIndicator IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -578,14 +582,14 @@ public class ImportOrder extends CustomProcess
 		if (log.isLoggable(Level.FINE)) log.fine("Set UoM=" + no);
 		// Set proper error message
 		sql = new StringBuilder ("UPDATE I_ORDER i ")
-				.append("SET C_UOM_ID = (SELECT C_UOM_ID FROM C_UOM u WHERE u.X12DE355=i.X12DE355 AND u.AD_Client_ID IN (0,i.AD_Client_ID))")
+				.append("SET C_UOM_ID = (SELECT MAX(C_UOM_ID) FROM C_UOM u WHERE u.X12DE355=i.X12DE355 AND u.AD_Client_ID IN (0,i.AD_Client_ID))")
 				.append("WHERE C_UOM_ID IS NULL AND X12DE355 IS NOT NULL")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 			no = DB.executeUpdate(sql.toString(), get_TrxName());
 			if (log.isLoggable(Level.INFO)) log.info("Set UOM=" + no);
 			//
 		sql = new StringBuilder ("UPDATE I_Order ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Not Found UOM, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Not Found UOM, ' ")
 			  .append("WHERE C_UoM_ID IS NULL AND (UoMName IS NOT NULL OR X12DE355 IS NOT NULL) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
@@ -612,7 +616,7 @@ public class ImportOrder extends CustomProcess
 		if (log.isLoggable(Level.FINE)) log.fine("Set Attributeset Instance=" + no);
 		
 		sql = new StringBuilder ("UPDATE I_Order ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Attributeset Instance, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Attributeset Instance, ' ")
 			  .append("WHERE M_AttributesetInstance_ID IS NULL AND AttributesetInstance IS NOT NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
@@ -620,6 +624,11 @@ public class ImportOrder extends CustomProcess
 			log.warning ("Invalid Attributeset Instance =" + no);
 
 		commitEx();
+		
+		if (p_IsValidateOnly)
+		{
+			return "Validated";
+		}
 		
 		//	-- New BPartner ---------------------------------------------------
 		//	Go through Order Records w/o C_BPartner_ID
@@ -751,7 +760,7 @@ public class ImportOrder extends CustomProcess
 			pstmt = null;
 		}
 		sql = new StringBuilder ("UPDATE I_Order ")
-			  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=No BPartner, ' ")
+			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No BPartner, ' ")
 			  .append("WHERE C_BPartner_ID IS NULL")
 			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
