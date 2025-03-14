@@ -199,23 +199,6 @@ public class ImportInOut extends CustomProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set IsSOTrx=N=" + no);
 		
-		//	Purchase/Sales Order
-		sql = new StringBuilder ("UPDATE I_InOut i ")
-			  .append("SET C_Order_ID=(SELECT MAX(C_Order_ID) FROM C_Order o")
-			  .append(" WHERE i.OrderDocumentNo=o.DocumentNo AND i.AD_Client_ID=o.AD_Client_ID AND i.AD_Org_ID = o.AD_Org_ID) ")
-			  .append("WHERE C_Order_ID IS NULL AND OrderDocumentNo IS NOT NULL")
-			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
-		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Set Purchase/Sales Order=" + no);	
-		
-		sql = new StringBuilder ("UPDATE I_InOut ")	// No DocType
-				  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No Purchase/Sales Order, ' ")
-				  .append("WHERE C_Order_ID IS NULL AND OrderDocumentNo IS NOT NULL")
-				  .append(" AND I_IsImported<>'Y'").append (clientCheck);
-			no = DB.executeUpdate(sql.toString(), get_TrxName());
-			if (no != 0)
-				log.warning ("No Purchase/Sales Order=" + no);
-		
 		//	Warehouse
 		sql = new StringBuilder ("UPDATE I_InOut o ")
 				  .append("SET M_Warehouse_ID=(SELECT M_Warehouse_ID FROM M_Warehouse w")
@@ -308,24 +291,24 @@ public class ImportInOut extends CustomProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning ("No BP Location=" + no);
-					
+		
 		//	Purchase/Sales Order
 		sql = new StringBuilder ("UPDATE I_InOut i ")
-		.append("SET C_Order_ID=(SELECT MAX(C_Order_ID) FROM C_Order o")
-		.append(" WHERE i.OrderDocumentNo=o.DocumentNo AND i.AD_Client_ID=o.AD_Client_ID AND i.AD_Org_ID = o.AD_Org_ID ")
-		.append(" AND o.C_BPartner_ID = i.C_BPartner_ID) ")
-		.append("WHERE C_Order_ID IS NULL AND OrderDocumentNo IS NOT NULL AND C_BPartner_ID IS NOT NULL ")
-		.append(" AND I_IsImported<>'Y'").append (clientCheck);
-  no = DB.executeUpdate(sql.toString(), get_TrxName());
-  if (log.isLoggable(Level.FINE)) log.fine("Set Purchase/Sales Order=" + no);	
-  
-  sql = new StringBuilder ("UPDATE I_InOut ")	// No DocType
-			.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No Purchase/Sales Order, ' ")
-			.append("WHERE C_Order_ID IS NULL AND OrderDocumentNo IS NOT NULL AND C_BPartner_ID IS NOT NULL ")
-			.append(" AND I_IsImported<>'Y'").append (clientCheck);
-	  no = DB.executeUpdate(sql.toString(), get_TrxName());
-  if (no != 0)
-	  log.warning ("No Purchase/Sales Order=" + no);
+			  .append("SET C_Order_ID=(SELECT MAX(C_Order_ID) FROM C_Order o")
+			  .append(" WHERE i.OrderDocumentNo=o.DocumentNo AND i.AD_Client_ID=o.AD_Client_ID AND i.AD_Org_ID = o.AD_Org_ID ")
+			  .append(" AND o.C_BPartner_ID = i.C_BPartner_ID) ")
+			  .append("WHERE C_Order_ID IS NULL AND OrderDocumentNo IS NOT NULL AND C_BPartner_ID IS NOT NULL ")
+			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Purchase/Sales Order=" + no);	
+		
+		sql = new StringBuilder ("UPDATE I_InOut ")	// No DocType
+				  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No Purchase/Sales Order, ' ")
+				  .append("WHERE C_Order_ID IS NULL AND OrderDocumentNo IS NOT NULL AND C_BPartner_ID IS NOT NULL ")
+				  .append(" AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (no != 0)
+			log.warning ("No Purchase/Sales Order=" + no);
 
 		//	Activity
 		sql = new StringBuilder ("UPDATE I_InOut o ")

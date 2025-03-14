@@ -2,8 +2,14 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: importdataprocess Test
 Bundle-SymbolicName: net.frontuari.importdataprocess.test
+<<<<<<< HEAD
 Bundle-Version: 12.0.0.qualifier
 Bundle-Vendor: www.frontuari.net
+=======
+Automatic-Module-Name: net.frontuari.importdataprocess
+Bundle-Version: 11.0.0.qualifier
+Bundle-Vendor: Frontuari, C.A. <https://frontuari.net>
+>>>>>>> refs/heads/pr-2
 Fragment-Host: net.frontuari.importdataprocess
 Bundle-ClassPath: .,
  lib/junit-jupiter-engine.jar,

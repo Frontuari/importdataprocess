@@ -338,8 +338,6 @@ public class ImportInventoryMove extends CustomProcess {
 			move.setC_DocType_ID(imove.getC_DocType_ID());
 			move.setAD_Org_ID(imove.getAD_Org_ID());
 			move.setMovementDate(imove.getMovementDate());
-			move.setC_DocType_ID(imove.getC_DocType_ID());
-			move.setDocumentNo(imove.getDocumentNo());
 			move.setC_BPartner_ID(imove.getC_BPartner_ID());
 			move.setM_Shipper_ID(imove.getM_Shipper_ID());
 			move.setC_Project_ID(imove.getC_Project_ID());

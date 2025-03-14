@@ -9,7 +9,11 @@
 		<relativePath>../../../idempiere/org.idempiere.parent/pom.xml</relativePath>
 	</parent>
         <properties>
+<<<<<<< HEAD
 		<revision>12.0.0-SNAPSHOT</revision>
+=======
+		<revision>11.0.0-SNAPSHOT</revision>
+>>>>>>> refs/heads/pr-2
         </properties>
 	<artifactId>net.frontuari.importdataprocess.test</artifactId>
 	<packaging>eclipse-plugin</packaging>

@@ -588,36 +588,36 @@ public class ImportInvoice extends CustomProcess
 			log.warning ("Invalid C_1099Box_Value=" + no);
 		
 		// Set Conversion Type
-				sql = new StringBuilder ("UPDATE I_Invoice o ")
-						.append("SET C_ConversionType_ID=(SELECT C_ConversionType_ID FROM C_ConversionType a")
-						.append(" WHERE o.ConversionTypeValue=a.Value AND (a.AD_Client_ID = o.AD_Client_ID OR a.AD_Client_ID = 0)) ")
-						.append(" WHERE C_ConversionType_ID IS NULL and ConversionTypeValue IS NOT NULL")
-						.append(" AND I_IsImported<>'Y'").append (clientCheck);
-				no = DB.executeUpdate(sql.toString(), get_TrxName());
-				log.fine("Set C_ConversionType_ID=" + no);
-				sql = new StringBuilder ("UPDATE I_Invoice ")
-						.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid ConversionTypeValue, ' ")
-						.append("WHERE C_ConversionType_ID IS NULL AND (ConversionTypeValue IS NOT NULL)")
-						.append(" AND I_IsImported<>'Y' ").append (clientCheck);
-				no = DB.executeUpdate(sql.toString(), get_TrxName());
-				if (no != 0)
-					log.warning ("Invalid ConversionTypeValue=" + no);
-				
+		sql = new StringBuilder ("UPDATE I_Invoice o ")
+				.append("SET C_ConversionType_ID=(SELECT C_ConversionType_ID FROM C_ConversionType a")
+				.append(" WHERE o.ConversionTypeValue=a.Value AND (a.AD_Client_ID = o.AD_Client_ID OR a.AD_Client_ID = 0)) ")
+				.append(" WHERE C_ConversionType_ID IS NULL and ConversionTypeValue IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		log.fine("Set C_ConversionType_ID=" + no);
+		sql = new StringBuilder ("UPDATE I_Invoice ")
+				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid ConversionTypeValue, ' ")
+				.append("WHERE C_ConversionType_ID IS NULL AND (ConversionTypeValue IS NOT NULL)")
+				.append(" AND I_IsImported<>'Y' ").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (no != 0)
+			log.warning ("Invalid ConversionTypeValue=" + no);
 
-				//User1
-				sql = new StringBuilder ("UPDATE I_Invoice o ")
-						  .append("SET User1_ID=(SELECT C_ElementValue_ID FROM C_ElementValue c")
-						  .append(" WHERE o.User1Name=c.Name AND o.AD_Client_ID=c.AD_Client_ID) ")
-						  .append("WHERE User1_ID IS NULL AND User1Name IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
-					no = DB.executeUpdate(sql.toString(), get_TrxName());
-					if (log.isLoggable(Level.FINE)) log.fine("Set User1=" + no);
-					// Set proper error message
-					sql = new StringBuilder ("UPDATE I_Invoice ")
-						  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Not Found User1_ID, ' ")
-						  .append("WHERE User1_ID IS NULL AND User1Name IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
-					no = DB.executeUpdate(sql.toString(), get_TrxName());
-					if (no != 0)
-						log.warning("No User1Name=" + no);
+		//User1
+		sql = new StringBuilder ("UPDATE I_Invoice o ")
+				  .append("SET User1_ID=(SELECT MAX(C_ElementValue_ID) FROM C_ElementValue c "
+				  + "join C_Element e on c.C_Element_ID = e.C_Element_ID and e.ElementType = 'U' ")
+				  .append(" WHERE o.User1Name=c.Value AND o.AD_Client_ID=c.AD_Client_ID) ")
+				  .append("WHERE User1_ID IS NULL AND User1Name IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (log.isLoggable(Level.FINE)) log.fine("Set User1=" + no);
+			// Set proper error message
+			sql = new StringBuilder ("UPDATE I_Invoice ")
+				  .append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Not Found User1_ID, ' ")
+				  .append("WHERE User1_ID IS NULL AND User1Name IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (no != 0)
+				log.warning("No User1Name=" + no);
 			// David Castillo 04/10/2022
 			
 			//SetSalesRep 
@@ -652,27 +652,25 @@ public class ImportInvoice extends CustomProcess
 			if (no != 0)
 			log.warning ("No Purchase/Sales Order=" + no);
 			
-	//	Order Line from Order and Product
+		//	Order Line from Order and Product
 		sql = new StringBuilder ("UPDATE I_Invoice i ")
-		  .append("SET C_OrderLine_ID=(SELECT MAX(C_OrderLine_ID) FROM C_OrderLine ol")
-		  .append(" WHERE i.C_Order_ID=ol.C_Order_ID AND i.AD_Client_ID=ol.AD_Client_ID  ")
-		  .append(" AND i.M_Product_ID=ol.M_Product_ID) ")
-		  .append("WHERE C_OrderLine_ID IS NULL AND C_Order_ID IS NOT NULL AND M_Product_ID IS NOT NULL")
-		  .append(" AND I_IsImported<>'Y'").append (clientCheck);
+			  .append("SET C_OrderLine_ID=(SELECT MAX(C_OrderLine_ID) FROM C_OrderLine ol")
+			  .append(" WHERE i.C_Order_ID=ol.C_Order_ID AND i.AD_Client_ID=ol.AD_Client_ID  ")
+			  .append(" AND i.M_Product_ID=ol.M_Product_ID) ")
+			  .append("WHERE C_OrderLine_ID IS NULL AND C_Order_ID IS NOT NULL AND M_Product_ID IS NOT NULL")
+			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 			no = DB.executeUpdate(sql.toString(), get_TrxName());
 			if (log.isLoggable(Level.FINE)) log.fine("Set OrderLine=" + no);
 			
-	// MInOut from Order
-			
+		// MInOut from Order	
 		sql = new StringBuilder ("UPDATE I_Invoice i ")
 		  .append("SET M_InOut_ID=(SELECT MAX(M_InOut_ID) FROM M_InOut o")
 		  .append(" WHERE i.InOutDocumentNo=o.DocumentNo AND i.AD_Client_ID=o.AD_Client_ID  AND i.AD_Org_ID=o.AD_Org_ID)")
 		  .append("WHERE M_InOut_ID IS NULL AND InOutDocumentNo IS NOT NULL")
 		  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Set InOut=" + no);	
-		
-	//MInOutLine from header
+		if (log.isLoggable(Level.FINE)) log.fine("Set InOut=" + no);
+		//MInOutLine from header
 		
 	sql = new StringBuilder ("UPDATE I_Invoice i ")
 	  .append("SET M_InOutLine_ID=(SELECT MAX(M_InOutLine_ID) FROM M_InOutLine ol")
@@ -886,12 +884,13 @@ public class ImportInvoice extends CustomProcess
 					if (invoice != null)
 					{//dont process if m_docAction is empty
 						if (!m_docAction.equals("")) {
-						if (!invoice.processIt(m_docAction)) {
-							log.warning("Invoice Process Failed: " + invoice + " - " + invoice.getProcessMsg());
-							throw new IllegalStateException("Invoice Process Failed: " + invoice + " - " + invoice.getProcessMsg());
-						}	
+							if (!invoice.processIt(m_docAction)) {
+								log.warning("Invoice Process Failed: " + invoice + " - " + invoice.getProcessMsg());
+								throw new IllegalStateException("Invoice Process Failed: " + invoice + " - " + invoice.getProcessMsg());
+							}
+							invoice.saveEx();
+							commitEx();
 						}
-						invoice.saveEx();
 					}
 					//	Group Change
 					oldC_BPartner_ID = imp.getC_BPartner_ID();
@@ -954,8 +953,7 @@ public class ImportInvoice extends CustomProcess
 						invoice.setDateInvoiced(imp.getDateInvoiced());
 					if (imp.getDateAcct() != null)
 						invoice.setDateAcct(imp.getDateAcct());
-
-
+					
 					if (imp.get_ValueAsInt("User1_ID") > 0)
 						invoice.setUser1_ID(imp.get_ValueAsInt("User1_ID"));
 					//Conversion Type
@@ -978,10 +976,11 @@ public class ImportInvoice extends CustomProcess
 					{
 						MInOut io = new MInOut(getCtx(), imp.get_ValueAsInt("M_InOut_ID"), get_TrxName());
 						if (io.getC_Order_ID() > 0) {
-						imp.set_ValueOfColumn("C_Order_ID", io.getC_Order_ID());
-						imp.saveEx();
+							imp.set_ValueOfColumn("C_Order_ID", io.getC_Order_ID());
+							imp.saveEx();
 						}
 					}
+					
 					if(imp.get_ValueAsInt("C_Order_ID") > 0)
 						invoice.setC_Order_ID(imp.get_ValueAsInt("C_Order_ID"));
 					
@@ -1005,6 +1004,8 @@ public class ImportInvoice extends CustomProcess
 				// globalqss - [2855673] - assign dimensions to lines also in case they're different 
 				if (imp.getC_Activity_ID() != 0)
 					line.setC_Activity_ID(imp.getC_Activity_ID());
+				if (imp.get_ValueAsInt("User1_ID") > 0)
+					line.setUser1_ID(imp.get_ValueAsInt("User1_ID"));
 				if (imp.getC_Campaign_ID() != 0)
 					line.setC_Campaign_ID(imp.getC_Campaign_ID());
 				if (imp.getC_Project_ID() != 0)

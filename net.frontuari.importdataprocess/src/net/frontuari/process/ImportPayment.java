@@ -45,8 +45,6 @@ public class ImportPayment extends CustomProcess
 {
 	/**	Organization to be imported to	*/
 	private int				p_AD_Org_ID = 0;
-	/** Default Bank Account			*/
-	private int				p_C_BankAccount_ID = 0;
 	/**	Delete old Imported				*/
 	private boolean			p_deleteOldImported = false;
 	/**	Document Action					*/
@@ -68,8 +66,6 @@ public class ImportPayment extends CustomProcess
 			String name = para[i].getParameterName();
 			if (name.equals("AD_Org_ID"))
 				p_AD_Org_ID = ((BigDecimal)para[i].getParameter()).intValue();
-			/*else if (name.equals("C_BankAccount_ID"))
-				p_C_BankAccount_ID = ((BigDecimal)para[i].getParameter()).intValue();*/
 			else if (name.equals("DeleteOldImported"))
 				p_deleteOldImported = "Y".equals(para[i].getParameter());
 			else if (name.equals("DocAction"))
@@ -89,14 +85,6 @@ public class ImportPayment extends CustomProcess
 	 */
 	protected String doIt() throws Exception
 	{
-		if (log.isLoggable(Level.INFO)) log.info("C_BankAccount_ID" + p_C_BankAccount_ID);
-		MBankAccount ba = MBankAccount.get(getCtx(), p_C_BankAccount_ID);
-		
-		/*if (p_C_BankAccount_ID == 0 || ba.get_ID() != p_C_BankAccount_ID)
-			throw new AdempiereUserError("@NotFound@ @C_BankAccount_ID@ - " + p_C_BankAccount_ID);*/
-		
-		if (p_AD_Org_ID != ba.getAD_Org_ID() && ba.getAD_Org_ID() != 0)
-			p_AD_Org_ID = ba.getAD_Org_ID();
 		if (log.isLoggable(Level.INFO)) log.info("AD_Org_ID=" + p_AD_Org_ID);
 		
 		StringBuilder sql = null;
@@ -116,7 +104,7 @@ public class ImportPayment extends CustomProcess
 
 		//	Set Client, Org, IsActive, Created/Updated
 		sql = new StringBuilder ("UPDATE I_Payment ")
-		.append("SET AD_Client_ID = COALESCE (AD_Client_ID,").append (Env.getAD_Client_ID(getCtx())).append ("),")
+			  .append("SET AD_Client_ID = COALESCE (AD_Client_ID,").append (Env.getAD_Client_ID(getCtx())).append ("),")
 			  .append(" AD_Org_ID = COALESCE (AD_Org_ID,").append (p_AD_Org_ID).append ("),");
 		sql.append(" IsActive = COALESCE (IsActive, 'Y'),")
 			  .append(" Created = COALESCE (Created, SysDate),")
@@ -288,7 +276,6 @@ public class ImportPayment extends CustomProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning("No BPartner=" + no);
-		
 		
 		//	Check Payment<->Invoice combination
 		sql = new StringBuilder("UPDATE I_Payment ")
@@ -495,15 +482,16 @@ public class ImportPayment extends CustomProcess
 			if (no != 0)
 				log.warning ("Invalid CVC_CashFlowConceptValue=" + no);
 		}
-				//	Added by Jorge Colmenarez, 2024-05-14 09:14
-				sql = new StringBuilder ("UPDATE I_Payment i ")
-				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Duplicated record with same Bank Account,DocType, DocumentNo, DateTrx, PayAmt and Currency, ' ")
-				.append("WHERE C_BankAccount_ID IS NOT NULL AND DocumentNo IS NOT NULL AND DateTrx IS NOT NULL AND PayAmt IS NOT NULL AND C_Currency_ID IS NOT NULL ")
-				.append(" AND EXISTS (SELECT 1 FROM C_Payment p WHERE p.C_BankAccount_ID = i.C_BankAccount_ID AND p.DocumentNo = i.DocumentNo AND p.DateTrx = i.DateTrx AND p.PayAmt = i.PayAmt AND p.C_Currency_ID = i.C_Currency_ID AND p.C_DocType_ID = i.C_DocType_ID) ")
-				.append(" AND I_IsImported<>'Y'").append (clientCheck);
-			no = DB.executeUpdate(sql.toString(), get_TrxName());
-			if (no != 0)
-				log.warning ("Duplicated record=" + no);
+		
+		//	Added by Jorge Colmenarez, 2024-05-14 09:14
+		sql = new StringBuilder ("UPDATE I_Payment i ")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Duplicated record with same Bank Account,DocType, DocumentNo, DateTrx, PayAmt and Currency, ' ")
+			.append("WHERE C_BankAccount_ID IS NOT NULL AND DocumentNo IS NOT NULL AND DateTrx IS NOT NULL AND PayAmt IS NOT NULL AND C_Currency_ID IS NOT NULL ")
+			.append(" AND EXISTS (SELECT 1 FROM C_Payment p WHERE p.C_BankAccount_ID = i.C_BankAccount_ID AND p.DocumentNo = i.DocumentNo AND p.DateTrx = i.DateTrx AND p.PayAmt = i.PayAmt AND p.C_Currency_ID = i.C_Currency_ID AND p.C_DocType_ID = i.C_DocType_ID) ")
+			.append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (no != 0)
+			log.warning ("Duplicated record=" + no);
 		//	End Jorge Colmenarez
 		
 		commitEx();

@@ -54,27 +54,32 @@ public class ImportBPBankAccount extends CustomProcess{
 		}
 		
 		//Set BPartner
-		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET C_BPartner_ID=(SELECT bp.C_BPartner_ID as C_BPartner_ID FROM C_BPartner as bp WHERE bp.taxid=bpi.taxid) WHERE bpi.C_BPartner_ID IS NULL AND bpi.taxid IS NOT NULL AND bpi.I_IsImported<>'Y'");
+		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET C_BPartner_ID=(SELECT MAX(bp.C_BPartner_ID) as C_BPartner_ID FROM C_BPartner as bp WHERE bp.TaxID=bpi.BPartnerValue AND bp.IsActive = 'Y') WHERE bpi.C_BPartner_ID IS NULL AND bpi.BPartnerValue IS NOT NULL AND bpi.I_IsImported<>'Y'");
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set BPartner=" + no);	
 		
 		//Set A_Name
-		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET A_Name=(SELECT bp.Name as Name FROM C_BPartner as bp WHERE bp.C_BPartner_ID=bpi.C_BPartner_ID) WHERE bpi.A_Name IS NULL AND bpi.I_IsImported<>'Y'");
+		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET A_Name=(SELECT MAX(bp.Name) as Name FROM C_BPartner as bp WHERE bp.C_BPartner_ID=bpi.C_BPartner_ID AND bp.IsActive = 'Y') WHERE bpi.C_BPartner_ID IS NOT NULL AND bpi.A_Name IS NULL AND bpi.I_IsImported<>'Y'");
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set A_Name=" + no);
 		
 		//Set Bank by Name
-		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET C_Bank_ID=(SELECT cb.C_Bank_ID as C_Bank_ID FROM C_Bank cb WHERE cb.name=bpi.BankName) WHERE bpi.C_Bank_ID IS NULL AND bpi.BankName IS NOT NULL AND bpi.I_IsImported<>'Y'");
+		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET C_Bank_ID=(SELECT MAX(cb.C_Bank_ID) as C_Bank_ID FROM C_Bank cb WHERE cb.Name=bpi.BankName AND cb.IsActive = 'Y') WHERE bpi.C_Bank_ID IS NULL AND bpi.BankName IS NOT NULL AND bpi.I_IsImported<>'Y'");
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Bank=" + no);
 		
 		//Set Bank by Routing No
-		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET C_Bank_ID=(SELECT cb.C_Bank_ID as C_Bank_ID FROM C_Bank cb WHERE cb.name=bpi.RoutingNo) WHERE bpi.C_Bank_ID IS NULL AND bpi.RoutingNo IS NOT NULL AND bpi.I_IsImported<>'Y'");
+		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET C_Bank_ID=(SELECT MAX(cb.C_Bank_ID) as C_Bank_ID FROM C_Bank cb WHERE cb.RoutingNo=bpi.RoutingNo AND cb.IsActive = 'Y') WHERE bpi.C_Bank_ID IS NULL AND bpi.RoutingNo IS NOT NULL AND bpi.I_IsImported<>'Y'");
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Bank=" + no);
 		
 		//Set SecuritySocial Number
-		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET A_Ident_SSN=(SELECT bp.taxid as value FROM C_BPartner bp WHERE bp.C_BPartner_ID=bpi.C_BPartner_ID) WHERE bpi.A_Ident_SSN IS NULL AND bpi.I_IsImported<>'Y'");
+		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET A_Ident_SSN=(SELECT MAX(bp.TaxID) as value FROM C_BPartner bp WHERE bp.C_BPartner_ID=bpi.C_BPartner_ID AND bp.IsActive = 'Y') WHERE bpi.C_BPartner_ID IS NOT NULL AND bpi.A_Ident_SSN IS NULL AND bpi.I_IsImported<>'Y'");
+		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Security Social Number=" + no);
+		
+		//Set Email
+		sql = new StringBuilder ("UPDATE I_BPartnerBankAccount as bpi SET A_Email=(SELECT MAX(bp.Email) as value FROM C_BPartner bp WHERE bp.C_BPartner_ID=bpi.C_BPartner_ID AND bp.IsActive = 'Y') WHERE bpi.C_BPartner_ID IS NOT NULL AND bpi.A_Email IS NULL AND bpi.I_IsImported<>'Y'");
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Security Social Number=" + no);
 		
@@ -84,7 +89,7 @@ public class ImportBPBankAccount extends CustomProcess{
 		int noUpdate = 0;
 		
 		sql = new StringBuilder ("SELECT * FROM I_BPartnerBankAccount ")
-				.append("WHERE I_IsImported='N'");
+				.append("WHERE I_IsImported='N' AND C_BPartner_ID IS NOT NULL");
 		
 		sql.append(" ORDER BY I_BPartnerBankAccount_ID");
 		PreparedStatement pstmt =  null;
@@ -96,28 +101,23 @@ public class ImportBPBankAccount extends CustomProcess{
 
 			while (rs.next())
 			{
+				int C_BPartner_ID = rs.getInt("C_BPartner_ID");
 				
-				StringBuilder vebp = new StringBuilder();
-				vebp.append("SELECT C_BPartner_ID FROM C_BPartner where C_BPartner_ID=").append(rs.getInt("C_BPartner_ID"));
-				
-				int C_BPartner_ID =  DB.getSQLValueEx(get_TrxName(), vebp.toString());
-				
-				if(C_BPartner_ID != -1) {				
+				if(C_BPartner_ID > 0) {
 					StringBuilder vsql = new StringBuilder();
 					
-					vsql.append("SELECT C_BP_BankAccount_ID FROM C_BP_BankAccount where C_BPartner_ID=")
-					.append(rs.getInt("C_BPartner_ID"))
-					.append(" AND C_Bank_ID=")
-					.append(rs.getInt("C_Bank_ID"))
-					.append(" AND AccountNo='")
-					.append(rs.getString("AccountNo")).append("'");
+					vsql.append("SELECT MAX(C_BP_BankAccount_ID) FROM C_BP_BankAccount where C_BPartner_ID=")
+						.append(C_BPartner_ID)
+						.append(" AND C_Bank_ID=")
+						.append(rs.getInt("C_Bank_ID"))
+						.append(" AND AccountNo='")
+						.append(rs.getString("AccountNo")).append("'");
 					
 					int CBPartnerAccount_ID = DB.getSQLValueEx(get_TrxName(), vsql.toString());
 					
-					if(CBPartnerAccount_ID == -1) {
+					if(CBPartnerAccount_ID <= 0) {
 						MBPBankAccount bpba = new MBPBankAccount(m_ctx, 0, get_TrxName());
 						bpba.setAD_Org_ID(rs.getInt("AD_Org_ID"));
-						bpba.set_ValueOfColumn("AD_Client_ID", rs.getInt("AD_Client_ID"));
 						bpba.setC_BPartner_ID(rs.getInt("C_BPartner_ID"));
 						bpba.setIsACH(true);
 						bpba.setC_Bank_ID(rs.getInt("C_Bank_ID"));
@@ -128,6 +128,7 @@ public class ImportBPBankAccount extends CustomProcess{
 						bpba.setIBAN(rs.getString("IBAN"));
 						bpba.setA_Name(rs.getString("A_Name"));
 						bpba.setA_Ident_SSN(rs.getString("A_Ident_SSN"));
+						bpba.setA_EMail(rs.getString("A_EMail"));
 						bpba.saveEx();
 						
 						noInsert++;
@@ -142,6 +143,7 @@ public class ImportBPBankAccount extends CustomProcess{
 						bpba.setIBAN(rs.getString("IBAN"));	
 						bpba.setA_Name(rs.getString("A_Name"));
 						bpba.setA_Ident_SSN(rs.getString("A_Ident_SSN"));
+						bpba.setA_EMail(rs.getString("A_EMail"));
 						bpba.saveEx();
 						
 						noUpdate++;

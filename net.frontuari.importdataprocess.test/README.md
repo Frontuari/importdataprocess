@@ -8,9 +8,9 @@ This fragment will be invoke when the main plugin is creating.
 
 ### Utils
 
-- Annotations Assertion: Allows you to test the annotation over a class, see [Annotations.java](src/net/frontuari/test/assertion/Annotations.java).
-- Random Test Util: It is a collection of random utils, see [RandomTestUtil.java](src/net/frontuari/test/util/RandomTestUtil.java).
-- Random Test Util: Allows you to get a private field form reflection, see [ReflectionTestUtil.java](src/net/frontuari/test/util/ReflectionTestUtil.java).
+- Annotations Assertion: Allows you to test the annotation over a class, see [Annotations.java](src/net/frontuari/importdataprocess/test/assertion/Annotations.java).
+- Random Test Util: It is a collection of random utils, see [RandomTestUtil.java](src/net/frontuari/importdataprocess/test/util/RandomTestUtil.java).
+- Random Test Util: Allows you to get a private field form reflection, see [ReflectionTestUtil.java](src/net/frontuari/importdataprocess/test/util/ReflectionTestUtil.java).
 
 ### Tech stack
 
