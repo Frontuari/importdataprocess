@@ -594,6 +594,21 @@ public class ImportOrder extends CustomProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning("No UoM=" + no);
+		
+		// It is filtered using TaxID as the search criteria, ensuring that the SalesRep_Value of I_Order matches the TaxID of C_BPartner.
+		//Added by Joaquin Mora 25/03/2025
+		sql = new StringBuilder("UPDATE I_Order o ")
+			      .append("SET SalesRep_ID=(SELECT MAX(u.AD_User_ID) FROM AD_User u ")
+			      .append(" JOIN C_BPartner cb ON u.C_BPartner_ID = cb.C_BPartner_ID ")
+			      .append(" WHERE o.SalesRep_Value = cb.TaxID ")
+			      .append(" AND o.AD_Client_ID = cb.AD_Client_ID ")
+			      .append(" AND cb.IsSalesRep = 'Y' AND cb.IsActive = 'Y')")
+			      .append(" WHERE SalesRep_ID IS NULL AND SalesRep_Value IS NOT NULL")
+			      .append(" AND I_IsImported<>'Y'").append(clientCheck);
+
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (log.isLoggable(Level.FINE)) log.fine("Set SalesRep from Value=" + no);
+		
 
 		//	instancia atribute
 		//Added by Jose Vasquez 27/05/2024
@@ -857,8 +872,8 @@ public class ImportOrder extends CustomProcess
 					if (order.getSalesRep_ID() == 0)
 						order.setSalesRep_ID(getAD_User_ID());
 					//
-				/*	if (imp.getAD_OrgTrx_ID() != 0)
-						order.setAD_OrgTrx_ID(imp.getAD_OrgTrx_ID());*/
+					if (imp.getAD_OrgTrx_ID() != 0)
+						order.setAD_OrgTrx_ID(imp.getAD_OrgTrx_ID());
 					if (imp.getC_Activity_ID() != 0)
 						order.setC_Activity_ID(imp.getC_Activity_ID());
 					if (imp.getC_Campaign_ID() != 0)
