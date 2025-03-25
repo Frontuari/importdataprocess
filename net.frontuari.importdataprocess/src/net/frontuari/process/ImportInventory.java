@@ -555,7 +555,7 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 		       .append("JOIN m_attributesetinstance ma ON COALESCE(mi3.m_attributesetinstance_id, mi2.m_attributesetinstance_id) = ma.m_attributesetinstance_id "
 		       		+  "JOIN C_DocType cd on mi.c_doctype_id = cd.c_doctype_id ")
 		       .append("WHERE mi2.m_product_id = ").append(product.getM_Product_ID())
-		       .append(" AND cd.DocSubTypeInv = ").append(DocTypeAjustCost.getDocSubTypeInv());
+		       .append(" AND cd.DocSubTypeInv = '").append(DocTypeAjustCost.getDocSubTypeInv()+"' ");
 
 		    if (imp.getLot() != null && !imp.getLot().isEmpty()) {
 		        sql.append(" AND ma.lot = '").append(imp.getLot()).append("'");
@@ -585,7 +585,7 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 		        M_AttributeSetInstance_ID = masi.getM_AttributeSetInstance_ID();
 		    }
 		}
-		log.warning("Lote Encontrado: "+M_AttributeSetInstance_ID);
+		log.warning("Lote Encontrado: "+M_AttributeSetInstance_ID+imp.getLot() );
 		return M_AttributeSetInstance_ID;
 
 	}
