@@ -31,6 +31,7 @@ import org.compiere.model.MAcctSchema;
 import org.compiere.model.MAttributeSet;
 import org.compiere.model.MAttributeSetInstance;
 import org.compiere.model.MCost;
+import org.compiere.model.MDocType;
 import org.compiere.model.MInventory;
 import org.compiere.model.MInventoryLine;
 import org.compiere.model.MProduct;
@@ -450,6 +451,8 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 					 M_AttributeSetInstance_ID = imp.get_ValueAsInt("M_AttributeSetInstance_ID");
 				}else {
 					 M_AttributeSetInstance_ID = generateASI(product,imp);
+					 imp.set_ValueOfColumn("M_AttributeSetInstance_ID", M_AttributeSetInstance_ID);
+					 log.warning("Lote Encontrado: "+M_AttributeSetInstance_ID);
 				}
 
 				MInventoryLine line = new MInventoryLine (inventory, 
@@ -540,23 +543,51 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 
 	protected int generateASI(MProduct product,X_I_Inventory imp){
 		int M_AttributeSetInstance_ID = 0;
-		if ((imp.getLot() != null && imp.getLot().length() > 0) || (imp.getSerNo() != null && imp.getSerNo().length() > 0))
-		{
+
+		if ((imp.getLot() != null && !imp.getLot().isEmpty()) || (imp.getSerNo() != null && !imp.getSerNo().isEmpty())) {
+		    MDocType DocTypeAjustCost = new MDocType(getCtx(), p_C_DocType_ID, get_TrxName());
 			
-			if (product.isInstanceAttribute())
-			{
-				MAttributeSet mas = product.getAttributeSet();
-				MAttributeSetInstance masi = new MAttributeSetInstance(getCtx(), 0, mas.getM_AttributeSet_ID(), get_TrxName());
-				if (mas.isLot() && imp.getLot() != null)
-					masi.setLot(imp.getLot(), imp.getM_Product_ID());
-				if (mas.isSerNo() && imp.getSerNo() != null)
-					masi.setSerNo(imp.getSerNo());
-				masi.setDescription();
-				masi.saveEx();
-				M_AttributeSetInstance_ID = masi.getM_AttributeSetInstance_ID();
-			}
+			StringBuilder sql = new StringBuilder(); 
+		    sql.append("SELECT ma.m_attributesetinstance_id ")
+		       .append("FROM m_inventoryline mi2 ")
+		       .append("JOIN m_inventory mi ON mi.m_inventory_id = mi2.m_inventory_id ")
+		       .append("LEFT JOIN m_inventorylinema mi3 ON mi2.m_inventoryline_id = mi3.m_inventoryline_id ")
+		       .append("JOIN m_attributesetinstance ma ON COALESCE(mi3.m_attributesetinstance_id, mi2.m_attributesetinstance_id) = ma.m_attributesetinstance_id "
+		       		+  "JOIN C_DocType cd on mi.c_doctype_id = cd.c_doctype_id ")
+		       .append("WHERE mi2.m_product_id = ").append(product.getM_Product_ID())
+		       .append(" AND cd.DocSubTypeInv = ").append(DocTypeAjustCost.getDocSubTypeInv());
+
+		    if (imp.getLot() != null && !imp.getLot().isEmpty()) {
+		        sql.append(" AND ma.lot = '").append(imp.getLot()).append("'");
+		    }
+
+		    sql.append(" ORDER BY ma.created ASC LIMIT 1");
+
+		    try {
+		        M_AttributeSetInstance_ID = DB.getSQLValueEx(get_TrxName(), sql.toString());
+		    } catch (Exception e) {
+		        log.log(Level.SEVERE, "Error executing SQL query", e);
+		    }
+
+		    if (product.isInstanceAttribute() && M_AttributeSetInstance_ID < 0) {
+		        MAttributeSet mas = product.getAttributeSet();
+		        MAttributeSetInstance masi = new MAttributeSetInstance(getCtx(), 0, mas.getM_AttributeSet_ID(), get_TrxName());
+
+		        if (mas.isLot() && imp.getLot() != null) {
+		            masi.setLot(imp.getLot(), imp.getM_Product_ID());
+		        }
+		        if (mas.isSerNo() && imp.getSerNo() != null) {
+		            masi.setSerNo(imp.getSerNo());
+		        }
+
+		        masi.setDescription();
+		        masi.saveEx();
+		        M_AttributeSetInstance_ID = masi.getM_AttributeSetInstance_ID();
+		    }
 		}
+		log.warning("Lote Encontrado: "+M_AttributeSetInstance_ID);
 		return M_AttributeSetInstance_ID;
+
 	}
 
 	protected void updateCosting(X_I_Inventory imp, MProduct product,
