@@ -545,7 +545,7 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 		int M_AttributeSetInstance_ID = 0;
 
 		if ((imp.getLot() != null && !imp.getLot().isEmpty()) || (imp.getSerNo() != null && !imp.getSerNo().isEmpty())) {
-		    MDocType DocTypeAjustCost = new MDocType(getCtx(), p_C_DocType_ID, get_TrxName());
+		    //MDocType DocTypeAjustCost = new MDocType(getCtx(), p_C_DocType_ID, get_TrxName());
 			
 			StringBuilder sql = new StringBuilder(); 
 		    sql.append("SELECT ma.m_attributesetinstance_id ")
@@ -555,7 +555,7 @@ public class ImportInventory extends CustomProcess implements ImportProcess
 		       .append("JOIN m_attributesetinstance ma ON COALESCE(mi3.m_attributesetinstance_id, mi2.m_attributesetinstance_id) = ma.m_attributesetinstance_id "
 		       		+  "JOIN C_DocType cd on mi.c_doctype_id = cd.c_doctype_id ")
 		       .append("WHERE mi2.m_product_id = ").append(product.getM_Product_ID())
-		       .append(" AND cd.DocSubTypeInv = '").append(DocTypeAjustCost.getDocSubTypeInv()+"' ");
+		       .append(" AND cd.DocSubTypeInv = 'CA' ");
 
 		    if (imp.getLot() != null && !imp.getLot().isEmpty()) {
 		        sql.append(" AND ma.lot = '").append(imp.getLot()).append("'");
