@@ -29,6 +29,7 @@ import org.compiere.model.MBPartnerLocation;
 import org.compiere.model.MLocation;
 import org.compiere.model.MOrder;
 import org.compiere.model.MOrderLine;
+import org.compiere.model.MSysConfig;
 import org.compiere.model.MUser;
 import org.compiere.model.X_I_Order;
 import org.compiere.process.ProcessInfoParameter;
@@ -788,173 +789,143 @@ public class ImportOrder extends CustomProcess
 
 		int noInsert = 0;
 		int noInsertLine = 0;
+		Integer maxLinesByDocument = MSysConfig.getIntValue("MAXLINESBYDOCUMENT", 0, getAD_Client_ID());
 
-		//	Go through Order Records w/o
-		sql = new StringBuilder ("SELECT * FROM I_Order ")
-			.append("WHERE I_IsImported='N'").append (clientCheck)
-			.append(" ORDER BY AD_Org_ID,C_BPartner_ID,C_DocType_ID,DocumentNo,C_Currency_ID, BillTo_ID, C_BPartner_Location_ID, I_Order_ID");
-		
-		try
-		{
-			pstmt = DB.prepareStatement (sql.toString(), get_TrxName());
-			rs = pstmt.executeQuery ();
-			//
-			int oldC_BPartner_ID = 0;
-			int oldBillTo_ID = 0;
-			int oldC_BPartner_Location_ID = 0;
-			int oldCurrency_ID = 0;
-			String oldDocumentNo = "";
-			//
-			MOrder order = null;
-			int lineNo = 0;
-			while (rs.next ())
-			{
-				X_I_Order imp = new X_I_Order (getCtx (), rs, get_TrxName());
-				String cmpDocumentNo = imp.getDocumentNo();
-				if (cmpDocumentNo == null)
-					cmpDocumentNo = "";
-				//	New Order
-				if (oldC_BPartner_ID != imp.getC_BPartner_ID() 
-					|| oldC_BPartner_Location_ID != imp.getC_BPartner_Location_ID()
-					|| oldBillTo_ID != imp.getBillTo_ID() 
-					|| oldCurrency_ID != imp.getC_Currency_ID() 
-					|| !oldDocumentNo.equals(cmpDocumentNo))
-				{
-					if (order != null)
-					{
-						if (m_docAction != null && m_docAction.length() > 0)
-						{
-							order.setDocAction(m_docAction);
-							if(!order.processIt (m_docAction)) {
-								log.warning("Order Process Failed: " + order + " - " + order.getProcessMsg());
-								throw new IllegalStateException("Order Process Failed: " + order + " - " + order.getProcessMsg());
-								
-							}
-						}
-						order.saveEx();
-					}
-					oldC_BPartner_ID = imp.getC_BPartner_ID();
-					oldC_BPartner_Location_ID = imp.getC_BPartner_Location_ID();
-					oldBillTo_ID = imp.getBillTo_ID();
-					oldCurrency_ID = imp.getC_Currency_ID();
-					oldDocumentNo = imp.getDocumentNo();
-					if (oldDocumentNo == null)
-						oldDocumentNo = "";
-					//
-					order = new MOrder (getCtx(), 0, get_TrxName());
-					order.setClientOrg (imp.getAD_Client_ID(), imp.getAD_OrgTrx_ID());
-					order.setC_DocTypeTarget_ID(imp.getC_DocType_ID());
-					order.setIsSOTrx(imp.isSOTrx());
-					if (imp.getDeliveryRule() != null ) {
-						order.setDeliveryRule(imp.getDeliveryRule());
-					}
-					if (imp.getDocumentNo() != null)
-						order.setDocumentNo(imp.getDocumentNo());
-					//	Ship Partner
-					order.setC_BPartner_ID(imp.getC_BPartner_ID());
-					order.setC_BPartner_Location_ID(imp.getC_BPartner_Location_ID());
-					if (imp.getAD_User_ID() != 0)
-						order.setAD_User_ID(imp.getAD_User_ID());
-					//	Bill Partner
-					order.setBill_BPartner_ID(imp.getC_BPartner_ID());
-					order.setBill_Location_ID(imp.getBillTo_ID());
-					//
-					if (imp.getDescription() != null)
-						order.setDescription(imp.getDescription());
-					order.setC_PaymentTerm_ID(imp.getC_PaymentTerm_ID());
-					order.setM_PriceList_ID(imp.getM_PriceList_ID());
-					order.setM_Warehouse_ID(imp.getM_Warehouse_ID());
-					if (imp.getM_Shipper_ID() != 0)
-						order.setM_Shipper_ID(imp.getM_Shipper_ID());
-					//	SalesRep from Import or the person running the import
-					if (imp.getSalesRep_ID() != 0)
-						order.setSalesRep_ID(imp.getSalesRep_ID());
-					if (order.getSalesRep_ID() == 0)
-						order.setSalesRep_ID(getAD_User_ID());
-					//
-					if (imp.getAD_OrgTrx_ID() != 0)
-						order.setAD_OrgTrx_ID(imp.getAD_OrgTrx_ID());
-					if (imp.getC_Activity_ID() != 0)
-						order.setC_Activity_ID(imp.getC_Activity_ID());
-					if (imp.getC_Campaign_ID() != 0)
-						order.setC_Campaign_ID(imp.getC_Campaign_ID());
-					if (imp.getC_Project_ID() != 0)
-						order.setC_Project_ID(imp.getC_Project_ID());
-					//
-					if (imp.getDateOrdered() != null)
-						order.setDateOrdered(imp.getDateOrdered());
-					if (imp.getDateAcct() != null)
-						order.setDateAcct(imp.getDateAcct());
-					if (imp.get_ValueAsInt("User1_ID") != 0)
-						order.setUser1_ID(imp.get_ValueAsInt("User1_ID"));
-				
-					//Conversion Type
-					int C_ConversionType_ID = imp.get_ValueAsInt("C_ConversionType_ID");
-					if(C_ConversionType_ID>0)
-						order.setC_ConversionType_ID(C_ConversionType_ID);
-					// Set Order Source
-					if (imp.getC_OrderSource() != null)
-						order.setC_OrderSource_ID(imp.getC_OrderSource_ID());
-					//
-					order.saveEx();
-					noInsert++;
-					lineNo = 10;
-				}
-				imp.setC_Order_ID(order.getC_Order_ID());
-				//	New OrderLine
-				MOrderLine line = new MOrderLine (order);
-				line.setLine(lineNo);
-				lineNo += 10;
-				if (imp.getM_Product_ID() != 0) {
-					line.setM_Product_ID(imp.getM_Product_ID(), true);
-					line.setC_UOM_ID(imp.getC_UOM_ID());
-				}
-				if (imp.getC_Charge_ID() != 0)
-					line.setC_Charge_ID(imp.getC_Charge_ID());
-				line.setQty(imp.getQtyOrdered());
-				line.setPrice();
-				if (imp.getPriceActual().compareTo(Env.ZERO) != 0)
-					line.setPrice(imp.getPriceActual());					
-				if (imp.get_ValueAsInt("AttributesetInstance") != 0)
-					line.setM_AttributeSetInstance_ID(imp.get_ValueAsInt("AttributesetInstance"));
-				if (imp.getC_Tax_ID() != 0)
-					line.setC_Tax_ID(imp.getC_Tax_ID());
-				else
-				{
-					line.setTax();
-					imp.setC_Tax_ID(line.getC_Tax_ID());
-				}
-				if (imp.getFreightAmt() != null)
-					line.setFreightAmt(imp.getFreightAmt());
-				if (imp.getLineDescription() != null)
-					line.setDescription(imp.getLineDescription());
-				if (imp.getC_UOM_ID() != 0)
-					line.setC_UOM_ID(imp.getC_UOM_ID());
-				if (imp.getC_Activity_ID() != 0)
-					line.setC_Activity_ID(imp.getC_Activity_ID());
-				if (imp.get_ValueAsInt("AD_User1") != 0)
-					line.setUser1_ID(imp.get_ValueAsInt("AD_User1"));
-				
-				line.saveEx();
-				imp.setC_OrderLine_ID(line.getC_OrderLine_ID());
-				imp.setI_IsImported(true);
-				imp.setProcessed(true);
-				//
-				if (imp.save())
-					noInsertLine++;
-			}
-			if (order != null)
-			{
-				if (m_docAction != null && m_docAction.length() > 0)
-				{
-					order.setDocAction(m_docAction);
-					if(!order.processIt (m_docAction)) {
-						log.warning("Order Process Failed: " + order + " - " + order.getProcessMsg());
-						throw new IllegalStateException("Order Process Failed: " + order + " - " + order.getProcessMsg());
-						
-					}
-				}
-				order.saveEx();
+		if (maxLinesByDocument <= 0) {
+		    maxLinesByDocument = Integer.MAX_VALUE; // Sin límite si no está configurado
+		}
+
+		// Go through Order Records w/o
+		sql = new StringBuilder("SELECT * FROM I_Order ")
+		    .append("WHERE I_IsImported='N'").append(clientCheck)
+		    .append(" ORDER BY AD_Org_ID,C_BPartner_ID,C_DocType_ID,DocumentNo,C_Currency_ID, BillTo_ID, C_BPartner_Location_ID, POReference, I_Order_ID");
+
+		try {
+		    pstmt = DB.prepareStatement(sql.toString(), get_TrxName());
+		    rs = pstmt.executeQuery();
+		    
+		    int oldC_BPartner_ID = 0;
+		    int oldBillTo_ID = 0;
+		    int oldC_BPartner_Location_ID = 0;
+		    int oldCurrency_ID = 0;
+		    int oldSalesrep_ID = 0;
+		    String oldDocumentNo = "";
+		    String oldPOReference = "";
+		   
+		    MOrder order = null;
+		    int lineNo = 0;
+		    int currentLineCount = 0;
+		    
+		    while (rs.next()) {
+		        X_I_Order imp = new X_I_Order(getCtx(), rs, get_TrxName());
+		        String cmpDocumentNo = imp.getDocumentNo();
+		        if (cmpDocumentNo == null) cmpDocumentNo = "";
+		        
+		        String cmpPOReference = imp.get_ValueAsString("POReference");
+		        if (cmpPOReference == null) cmpPOReference = "";
+
+		        // Nueva orden si el documento cambia, si POReference cambia o si se alcanza el límite de líneas
+		        if (order == null || oldC_BPartner_ID != imp.getC_BPartner_ID() 
+		            || oldC_BPartner_Location_ID != imp.getC_BPartner_Location_ID()
+		            || oldBillTo_ID != imp.getBillTo_ID()
+		            || oldSalesrep_ID != imp.getSalesRep_ID()
+		            || oldCurrency_ID != imp.getC_Currency_ID()
+		            || !oldDocumentNo.equals(cmpDocumentNo) 
+		            || !oldPOReference.equals(cmpPOReference)
+		            || currentLineCount >= maxLinesByDocument) {
+		            
+		            if (order != null) {
+		                if (m_docAction != null && m_docAction.length() > 0) {
+		                    order.setDocAction(m_docAction);
+		                    if (!order.processIt(m_docAction)) {
+		                        log.warning("Order Process Failed: " + order + " - " + order.getProcessMsg());
+		                        throw new IllegalStateException("Order Process Failed: " + order + " - " + order.getProcessMsg());
+		                    }
+		                }
+		                order.saveEx();
+		            }
+		            
+		            oldC_BPartner_ID = imp.getC_BPartner_ID();
+		            oldC_BPartner_Location_ID = imp.getC_BPartner_Location_ID();
+		            oldBillTo_ID = imp.getBillTo_ID();
+		            oldCurrency_ID = imp.getC_Currency_ID();
+		            oldSalesrep_ID = imp.getSalesRep_ID(); 
+		            oldDocumentNo = imp.getDocumentNo();
+		            oldPOReference = imp.get_ValueAsString("POReference");
+		            if (oldDocumentNo == null) oldDocumentNo = "";
+		            if (oldPOReference == null) oldPOReference = "";
+		            
+		            order = new MOrder(getCtx(), 0, get_TrxName());
+		            order.setClientOrg(imp.getAD_Client_ID(), imp.getAD_OrgTrx_ID());
+		            order.setC_DocTypeTarget_ID(imp.getC_DocType_ID());
+		            order.setIsSOTrx(imp.isSOTrx());
+		            if (imp.getDeliveryRule() != null) {
+		                order.setDeliveryRule(imp.getDeliveryRule());
+		            }
+		            if (imp.getDocumentNo() != null) order.setDocumentNo(imp.getDocumentNo());
+		            order.setPOReference(imp.get_ValueAsString("POReference"));
+		            
+		            order.setC_BPartner_ID(imp.getC_BPartner_ID());
+		            order.setC_BPartner_Location_ID(imp.getC_BPartner_Location_ID());
+		            if (imp.getAD_User_ID() != 0) order.setAD_User_ID(imp.getAD_User_ID());
+		            order.setBill_BPartner_ID(imp.getC_BPartner_ID());
+		            order.setBill_Location_ID(imp.getBillTo_ID());
+		            if (imp.getDescription() != null) order.setDescription(imp.getDescription());
+		            order.setC_PaymentTerm_ID(imp.getC_PaymentTerm_ID());
+		            order.setM_PriceList_ID(imp.getM_PriceList_ID());
+		            order.setM_Warehouse_ID(imp.getM_Warehouse_ID());
+		            if (imp.getM_Shipper_ID() != 0) order.setM_Shipper_ID(imp.getM_Shipper_ID());
+		            if (imp.getSalesRep_ID() != 0)
+		                order.setSalesRep_ID(imp.getSalesRep_ID());
+		            if (order.getSalesRep_ID() == 0)
+		                order.setSalesRep_ID(getAD_User_ID());
+		            if (imp.getDateOrdered() != null) order.setDateOrdered(imp.getDateOrdered());
+		            if (imp.getDateAcct() != null) order.setDateAcct(imp.getDateAcct());
+		            
+		            System.out.println("SalesRep_ID en orden antes de guardar: " + order.getSalesRep_ID());
+		            order.saveEx();
+		            
+		            noInsert++;
+		            lineNo = 10;
+		            currentLineCount = 0;
+		        }
+
+		        imp.setC_Order_ID(order.getC_Order_ID());
+		        MOrderLine line = new MOrderLine(order);
+		        line.setLine(lineNo);
+		        lineNo += 10;
+		        currentLineCount++;
+		        
+		        if (imp.getM_Product_ID() != 0) {
+		            line.setM_Product_ID(imp.getM_Product_ID(), true);
+		            line.setC_UOM_ID(imp.getC_UOM_ID());
+		        }
+		        if (imp.getC_Charge_ID() != 0) line.setC_Charge_ID(imp.getC_Charge_ID());
+		        line.setQty(imp.getQtyOrdered());
+		        line.setPrice();
+		        if (imp.getPriceActual().compareTo(Env.ZERO) != 0) line.setPrice(imp.getPriceActual());
+		        if (imp.getC_Tax_ID() != 0) line.setC_Tax_ID(imp.getC_Tax_ID());
+		        else {
+		            line.setTax();
+		            imp.setC_Tax_ID(line.getC_Tax_ID());
+		        }
+		        line.saveEx();
+		        imp.setC_OrderLine_ID(line.getC_OrderLine_ID());
+		        imp.setI_IsImported(true);
+		        imp.setProcessed(true);
+		        
+		        if (imp.save()) noInsertLine++;
+		    }
+		    
+		    if (order != null) {
+		        if (m_docAction != null && m_docAction.length() > 0) {
+		            order.setDocAction(m_docAction);
+		            if (!order.processIt(m_docAction)) {
+		                log.warning("Order Process Failed: " + order + " - " + order.getProcessMsg());
+		                throw new IllegalStateException("Order Process Failed: " + order + " - " + order.getProcessMsg());
+		            }
+		        }
+		        order.saveEx();
 			}
 		}
 		catch (Exception e)
