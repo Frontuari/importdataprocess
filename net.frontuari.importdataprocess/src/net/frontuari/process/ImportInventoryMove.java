@@ -19,7 +19,9 @@ package net.frontuari.process;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 
 import org.adempiere.base.annotation.Process;
@@ -129,48 +131,67 @@ public class ImportInventoryMove extends CustomProcess {
 	 * import records using I_M_Movement table
 	 */
 	
-	private void importRecords()
-	{
+	private void importRecords() {
 		if (m_IsImportOnlyNoErrors && m_ErrorsFound)
-			return; // not importing because error were found
+			return;
 
 		isImported = false;
 
-		for(X_I_Movement imove : getRecords(false,true))
-		{
-			MMovement mov = importMInventoryMove(imove);			
-			if(mov!= null)
-			{    
+		// Agrupar registros por clave de encabezado
+		Map<String, List<X_I_Movement>> groupedRecords = new HashMap<>();
+		for (X_I_Movement imove : getRecords(false, true)) {
+			String key = generateKey(imove);
+			groupedRecords.computeIfAbsent(key, k -> new ArrayList<>()).add(imove);
+		}
+
+		// Procesar cada grupo
+		for (Map.Entry<String, List<X_I_Movement>> entry : groupedRecords.entrySet()) {
+			List<X_I_Movement> group = entry.getValue();
+			if (group.isEmpty()) continue;
+
+			X_I_Movement first = group.get(0);  // Usamos este para generar el encabezado
+			MMovement mov = importMInventoryMove(first);  // Crear nuevo encabezado
+			if (mov == null || mov.getM_Movement_ID() <= 0) {
+				notimported += group.size();
+				continue;
+			}
+
+			boolean allImported = true;
+			for (X_I_Movement imove : group) {
 				imove.setM_Movement_ID(mov.getM_Movement_ID());
 				imove.saveEx();
-				isImported = importMInventoryMoveLine(mov,imove);
-			}	
-			else
-			{    
-				isImported = false;
-			}	
-			
-			if(isImported)
-			{
-				imove.setI_IsImported(true);
-				imove.setProcessed(true);
-				imove.saveEx();
-				imported++;
-				
-				//mov.processIt(m_docAction);
+				isImported = importMInventoryMoveLine(mov, imove);
+				if (isImported) {
+					imove.setI_IsImported(true);
+					imove.setProcessed(true);
+					imove.saveEx();
+					imported++;
+				} else {
+					imove.setI_IsImported(false);
+					imove.setProcessed(false);
+					imove.saveEx();
+					notimported++;
+					allImported = false;
+				}
+			}
+
+			if (allImported) {
 				addForProcess(mov.getM_Movement_ID());
 				mov.saveEx();
-			}
-			else
-			{
-				imove.setI_IsImported(false);
-				imove.setProcessed(false);
-				imove.saveEx();
-				notimported++;
 			}
 		}
 		processAll();
 	}
+
+	private String generateKey(X_I_Movement imove) {
+		StringBuilder key = new StringBuilder();
+		key.append(imove.getAD_Org_ID()).append("_");
+		key.append(imove.getDocumentNo()).append("_");
+		key.append(imove.getMovementDate()).append("_");
+		key.append(imove.getC_DocType_ID());
+		return key.toString();
+	}
+
 	
 	private void addForProcess(int id)
 	{
@@ -216,6 +237,7 @@ public class ImportInventoryMove extends CustomProcess {
 		try
 		{
 			moveLine.setM_Movement_ID(move.getM_Movement_ID());
+			log.warning(""+move.getM_Movement_ID());
 			moveLine.setAD_Org_ID(imove.getAD_Org_ID());
 			moveLine.setM_Product_ID(imove.getM_Product_ID());
 			moveLine.setM_Locator_ID(imove.getM_Locator_ID());
@@ -334,7 +356,9 @@ public class ImportInventoryMove extends CustomProcess {
 		move = new MMovement(Env.getCtx(), oldID, get_TrxName());
 		
 		try{
-			move.setDocumentNo(imove.getDocumentNo());
+			if(imove.getDocumentNo()!=null && imove.getDocumentNo().length()>0){
+				move.setDocumentNo(imove.getDocumentNo());
+			}
 			move.setC_DocType_ID(imove.getC_DocType_ID());
 			move.setAD_Org_ID(imove.getAD_Org_ID());
 			move.setMovementDate(imove.getMovementDate());
@@ -348,11 +372,26 @@ public class ImportInventoryMove extends CustomProcess {
 			move.set_ValueOfColumn("AD_OrgTarget_ID", imove.getAD_OrgTrx_ID());
 			//	End Jorge Colmenarez
 			move.saveEx();
+			// Validación explícita
+			if (move.getM_Movement_ID() <= 0) {
+				String err = "No se pudo guardar el encabezado MMovement:\n"
+					+ "- DocumentNo: " + imove.getDocumentNo() + "\n"
+					+ "- Fecha: " + imove.getMovementDate() + "\n"
+					+ "- Tipo Doc: " + imove.getC_DocType_ID() + "\n"
+					+ "- Org: " + imove.getAD_Org_ID();
+				throw new IllegalStateException(err);
+			}
+
+			log.warning("Movimiento guardado: " + move.getDocumentNo());
 		}
 		catch(Exception e)
 		{	
-			imove.setI_ErrorMsg(e.getMessage());
-			isImported = false;
+			String errMsg = "Error al guardar MMovement:\n"
+					+ "- DocumentNo: " + imove.getDocumentNo() + "\n"
+					+ "- Error: " + e.getMessage();
+				imove.setI_ErrorMsg(errMsg);
+				isImported = false;
+				throw new RuntimeException(errMsg, e);
 		}
 		
 		return move;
