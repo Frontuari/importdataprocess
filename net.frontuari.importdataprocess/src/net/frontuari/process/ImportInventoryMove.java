@@ -188,6 +188,8 @@ public class ImportInventoryMove extends CustomProcess {
 		key.append(imove.getAD_Org_ID()).append("_");
 		key.append(imove.getDocumentNo()).append("_");
 		key.append(imove.getMovementDate()).append("_");
+		key.append(imove.getM_Locator().getM_Warehouse_ID()).append("_");
+		key.append(imove.getM_LocatorTo().getM_Warehouse_ID()).append("_");
 		key.append(imove.getC_DocType_ID());
 		return key.toString();
 	}
@@ -339,24 +341,34 @@ public class ImportInventoryMove extends CustomProcess {
 	
 	private MMovement importMInventoryMove(X_I_Movement imove)
 	{
-	    	final String  whereClause = I_M_Movement.COLUMNNAME_MovementDate + "= ? AND "
-	    				  + I_M_Movement.COLUMNNAME_DocumentNo + "=? AND "	  
-	    				  + I_M_Movement.COLUMNNAME_C_DocType_ID+"=?";
-		int oldID = new Query(Env.getCtx(), I_M_Movement.Table_Name,whereClause, get_TrxName())
-		.setClient_ID()
-		.setParameters(imove.getMovementDate(), imove.getDocumentNo(), imove.getC_DocType_ID())
-		.firstId();
-		
+		// Obtener almacenes desde los localizadores
+		int warehouseFrom_ID = imove.getM_Locator().getM_Warehouse_ID();
+		int warehouseTo_ID = imove.getM_LocatorTo().getM_Warehouse_ID();
+
+		final String whereClause = I_M_Movement.COLUMNNAME_MovementDate + "= ? AND "
+				+ I_M_Movement.COLUMNNAME_DocumentNo + "=? AND "
+				+ I_M_Movement.COLUMNNAME_C_DocType_ID + "=? AND "
+				+ "M_Warehouse_ID=? AND M_WarehouseTo_ID=?"; // Campos personalizados
+
+		int oldID = new Query(Env.getCtx(), I_M_Movement.Table_Name, whereClause, get_TrxName())
+				.setClient_ID()
+				.setParameters(
+					imove.getMovementDate(),
+					imove.getDocumentNo(),
+					imove.getC_DocType_ID(),
+					warehouseFrom_ID,
+					warehouseTo_ID
+				)
+				.firstId();
+
 		MMovement move = null;
-		if(oldID<=0)
-		{
+		if (oldID <= 0)
 			oldID = 0;
-		}
-		
+
 		move = new MMovement(Env.getCtx(), oldID, get_TrxName());
-		
-		try{
-			if(imove.getDocumentNo()!=null && imove.getDocumentNo().length()>0){
+
+		try {
+			if (imove.getDocumentNo() != null && imove.getDocumentNo().length() > 0) {
 				move.setDocumentNo(imove.getDocumentNo());
 			}
 			move.setC_DocType_ID(imove.getC_DocType_ID());
@@ -367,33 +379,27 @@ public class ImportInventoryMove extends CustomProcess {
 			move.setC_Project_ID(imove.getC_Project_ID());
 			move.setC_Campaign_ID(imove.getC_Campaign_ID());
 			move.setAD_OrgTrx_ID(imove.getAD_OrgTrx_ID());
-			//	Added By Jorge Colmenarez, 2021-11-12 10:51
-			//	Support for OrgTarget
 			move.set_ValueOfColumn("AD_OrgTarget_ID", imove.getAD_OrgTrx_ID());
-			//	End Jorge Colmenarez
+			move.setM_Warehouse_ID(warehouseFrom_ID);
+			move.setM_WarehouseTo_ID(warehouseTo_ID);
+
 			move.saveEx();
-			// Validación explícita
+
 			if (move.getM_Movement_ID() <= 0) {
-				String err = "No se pudo guardar el encabezado MMovement:\n"
-					+ "- DocumentNo: " + imove.getDocumentNo() + "\n"
-					+ "- Fecha: " + imove.getMovementDate() + "\n"
-					+ "- Tipo Doc: " + imove.getC_DocType_ID() + "\n"
-					+ "- Org: " + imove.getAD_Org_ID();
-				throw new IllegalStateException(err);
+				throw new IllegalStateException("No se pudo guardar MMovement");
 			}
 
 			log.warning("Movimiento guardado: " + move.getDocumentNo());
-		}
-		catch(Exception e)
-		{	
+
+		} catch (Exception e) {
 			String errMsg = "Error al guardar MMovement:\n"
 					+ "- DocumentNo: " + imove.getDocumentNo() + "\n"
 					+ "- Error: " + e.getMessage();
-				imove.setI_ErrorMsg(errMsg);
-				isImported = false;
-				throw new RuntimeException(errMsg, e);
+			imove.setI_ErrorMsg(errMsg);
+			isImported = false;
+			throw new RuntimeException(errMsg, e);
 		}
-		
+
 		return move;
 	}
 
