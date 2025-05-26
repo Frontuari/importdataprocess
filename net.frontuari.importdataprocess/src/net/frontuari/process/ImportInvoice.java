@@ -1003,6 +1003,8 @@ public class ImportInvoice extends CustomProcess
 				// globalqss - import invoice with charges
 				if (imp.getC_Charge_ID() != 0)
 					line.setC_Charge_ID(imp.getC_Charge_ID());
+				
+				   
 				// globalqss - [2855673] - assign dimensions to lines also in case they're different 
 				if (imp.getC_Activity_ID() != 0)
 					line.setC_Activity_ID(imp.getC_Activity_ID());
@@ -1012,9 +1014,19 @@ public class ImportInvoice extends CustomProcess
 					line.setC_Campaign_ID(imp.getC_Campaign_ID());
 				if (imp.getC_Project_ID() != 0)
 					line.setC_Project_ID(imp.getC_Project_ID());
+				
 				//
 				line.setQty(imp.getQtyOrdered());
 				line.setPrice();
+				
+				BigDecimal priceList = null;
+		        if(imp.get_Value("PriceList") != null) {
+		        	priceList = new BigDecimal(imp.get_Value("PriceList").toString());
+		        	line.setPriceList(priceList);
+		        	line.saveEx();
+		        }else {
+		        	priceList = new BigDecimal(0);		        
+		        }
 				BigDecimal price = imp.getPriceActual();
 				if (price != null && Env.ZERO.compareTo(price) != 0)
 					line.setPrice(price);
@@ -1037,8 +1049,11 @@ public class ImportInvoice extends CustomProcess
 					imp.saveEx();
 					line.setM_InOutLine_ID(iol.get_ID());
 				}
-				if(imp.get_ValueAsInt("C_OrderLine_ID") > 0)
+				/*if(imp.get_ValueAsInt("C_OrderLine_ID") > 0)
 					line.setC_OrderLine_ID(imp.get_ValueAsInt("C_OrderLine_ID"));
+				BigDecimal priceList = new BigDecimal(imp.get_ValueAsString("PriceList"));
+				if (priceList.compareTo(BigDecimal.ZERO) < 0)
+				    line.setPriceList(priceList);*/
 				
 				line.saveEx();
 				//
