@@ -1045,6 +1045,6 @@ public class ImportOrder extends CustomProcess
 		addLog(0, null, new BigDecimal(noInsertLine), "@C_OrderLine_ID@: @Inserted@");
 		StringBuilder msgreturn = new StringBuilder("#").append(noInsert).append("/").append(noInsertLine);
 		return msgreturn.toString();
- // doIt
-	}
+	}	//	doIt
+  
 }	//	ImportOrder

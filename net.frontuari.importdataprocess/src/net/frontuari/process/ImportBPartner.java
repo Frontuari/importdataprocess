@@ -59,8 +59,7 @@ import net.frontuari.base.CustomProcess;
  * 			Support for LVE Fields Required, Add Support for Fields for Customer BPartners
  */
 @Process
-public class ImportBPartner extends CustomProcess
-implements ImportProcess
+public class ImportBPartner extends CustomProcess implements ImportProcess
 {
 	/**	Client to be imported to		*/
 	private int				m_AD_Client_ID = 0;
@@ -159,16 +158,6 @@ implements ImportProcess
 		if (log.isLoggable(Level.CONFIG)) log.config("Invalid Group=" + no);
 
 		//	Set Country
-		/**
-		sql = new StringBuffer ("UPDATE I_BPartner i "
-			+ "SET CountryCode=(SELECT CountryCode FROM C_Country c WHERE c.IsDefault='Y'"
-			+ " AND c.AD_Client_ID IN (0, i.AD_Client_ID) AND ROWNUM=1) "
-			+ "WHERE CountryCode IS NULL AND C_Country_ID IS NULL"
-			+ " AND I_IsImported<>'Y'").append(clientCheck);
-		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
-		log.fine("Set Country Default=" + no);
-		 **/
-		//
 		sql = new StringBuilder ("UPDATE I_BPartner i ")
 				.append("SET C_Country_ID=(SELECT C_Country_ID FROM C_Country c")
 				.append(" WHERE i.CountryCode=c.CountryCode AND c.AD_Client_ID IN (0, i.AD_Client_ID)) ")
@@ -227,7 +216,7 @@ implements ImportProcess
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.CONFIG)) log.config("Invalid Greeting=" + no);
-
+		
 		//	Existing BPartner ? Match Value
 		sql = new StringBuilder ("UPDATE I_BPartner i ")
 				.append("SET C_BPartner_ID=(SELECT C_BPartner_ID FROM C_BPartner p")
@@ -246,7 +235,7 @@ implements ImportProcess
 		no = DB.executeUpdateEx(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Found Contact=" + no);
 
-//		Existing Location ? Exact Match
+		//	Existing Location ? Exact Match
 		sql = new StringBuilder ("UPDATE I_BPartner i ")
 				.append("SET C_BPartner_Location_ID=(SELECT C_BPartner_Location_ID")
 				.append(" FROM C_BPartner_Location bpl INNER JOIN C_Location l ON (bpl.C_Location_ID=l.C_Location_ID)")
@@ -516,8 +505,8 @@ implements ImportProcess
 						{
 							sql = new StringBuilder ("UPDATE I_BPartner i ")
 									.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||")
-							.append("'Cannot Update BPartner, ' ")
-							.append("WHERE I_BPartner_ID=").append(impBP.getI_BPartner_ID());
+									.append("'Cannot Update BPartner, ' ")
+									.append("WHERE I_BPartner_ID=").append(impBP.getI_BPartner_ID());
 							DB.executeUpdateEx(sql.toString(), get_TrxName());
 							continue;
 						}
@@ -606,48 +595,48 @@ implements ImportProcess
 
 				//	****	Create/Update Contact	****
 				MUser user = null;
-	//	New Contact
-					if (impBP.getContactName() != null || impBP.getEMail() != null)
+				//	New Contact
+				if (impBP.getContactName() != null || impBP.getEMail() != null)
+				{
+					if(bp != null)
 					{
-						if(bp != null)
+						user = new MUser (bp);
+						if (impBP.getC_Greeting_ID() != 0)
+							user.setC_Greeting_ID(impBP.getC_Greeting_ID());
+						String name = impBP.getContactName();
+						if (name == null || name.length() == 0)
+							name = impBP.getName();
+						user.setName(name);
+						user.setTitle(impBP.getTitle());
+						user.setDescription(impBP.getContactDescription());
+						user.setComments(impBP.getComments());
+						user.setPhone(impBP.getPhone());
+						user.setPhone2(impBP.getPhone2());
+						user.setFax(impBP.getFax());
+						user.setEMail(impBP.getEMail());
+						user.setBirthday(impBP.getBirthday());
+						if (bpl != null)
+							user.setC_BPartner_Location_ID(bpl.getC_BPartner_Location_ID());
+						ModelValidationEngine.get().fireImportValidate(this, impBP, user, ImportValidator.TIMING_AFTER_IMPORT);
+						if (user.save())
 						{
-							user = new MUser (bp);
-							if (impBP.getC_Greeting_ID() != 0)
-								user.setC_Greeting_ID(impBP.getC_Greeting_ID());
-							String name = impBP.getContactName();
-							if (name == null || name.length() == 0)
-								name = impBP.getName();
-							user.setName(name);
-							user.setTitle(impBP.getTitle());
-							user.setDescription(impBP.getContactDescription());
-							user.setComments(impBP.getComments());
-							user.setPhone(impBP.getPhone());
-							user.setPhone2(impBP.getPhone2());
-							user.setFax(impBP.getFax());
-							user.setEMail(impBP.getEMail());
-							user.setBirthday(impBP.getBirthday());
-							if (bpl != null)
-								user.setC_BPartner_Location_ID(bpl.getC_BPartner_Location_ID());
-							ModelValidationEngine.get().fireImportValidate(this, impBP, user, ImportValidator.TIMING_AFTER_IMPORT);
-							if (user.save())
-							{
-								msglog = new StringBuilder("Insert BP Contact - ").append(user.getAD_User_ID());
-								if (log.isLoggable(Level.FINEST)) log.finest(msglog.toString());
-								impBP.setAD_User_ID(user.getAD_User_ID());
-							}
-							else
-							{
-								rollback();
-								noInsert--;
-								sql = new StringBuilder ("UPDATE I_BPartner i ")
-										.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||")
-								.append("'Cannot Insert BPContact, ' ")
-								.append("WHERE I_BPartner_ID=").append(impBP.getI_BPartner_ID());
-								DB.executeUpdateEx(sql.toString(), get_TrxName());
-								continue;
-							}
+							msglog = new StringBuilder("Insert BP Contact - ").append(user.getAD_User_ID());
+							if (log.isLoggable(Level.FINEST)) log.finest(msglog.toString());
+							impBP.setAD_User_ID(user.getAD_User_ID());
+						}
+						else
+						{
+							rollback();
+							noInsert--;
+							sql = new StringBuilder ("UPDATE I_BPartner i ")
+									.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||")
+							.append("'Cannot Insert BPContact, ' ")
+							.append("WHERE I_BPartner_ID=").append(impBP.getI_BPartner_ID());
+							DB.executeUpdateEx(sql.toString(), get_TrxName());
+							continue;
 						}
 					}
+				}
 
 				//	Interest Area
 				if (impBP.getR_InterestArea_ID() != 0 && user != null)
@@ -737,18 +726,15 @@ implements ImportProcess
 		//	End Jorge Colmenarez
 	}	// setTypeOfBPartner
 
-
 	@Override
 	public Properties getCtx() {
 		return Env.getCtx();
 	}
 
-
 	@Override
 	public String get_TrxName() {
 		return null;
 	}
-
 
 	@Override
 	public ProcessInfo getProcessInfo() {

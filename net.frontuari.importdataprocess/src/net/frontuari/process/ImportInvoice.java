@@ -602,7 +602,6 @@ public class ImportInvoice extends CustomProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning ("Invalid ConversionTypeValue=" + no);
-		
 
 		//User1
 		sql = new StringBuilder ("UPDATE I_Invoice o ")
@@ -653,27 +652,25 @@ public class ImportInvoice extends CustomProcess
 			if (no != 0)
 			log.warning ("No Purchase/Sales Order=" + no);
 			
-	//	Order Line from Order and Product
+		//	Order Line from Order and Product
 		sql = new StringBuilder ("UPDATE I_Invoice i ")
-		  .append("SET C_OrderLine_ID=(SELECT MAX(C_OrderLine_ID) FROM C_OrderLine ol")
-		  .append(" WHERE i.C_Order_ID=ol.C_Order_ID AND i.AD_Client_ID=ol.AD_Client_ID  ")
-		  .append(" AND i.M_Product_ID=ol.M_Product_ID) ")
-		  .append("WHERE C_OrderLine_ID IS NULL AND C_Order_ID IS NOT NULL AND M_Product_ID IS NOT NULL")
-		  .append(" AND I_IsImported<>'Y'").append (clientCheck);
+			  .append("SET C_OrderLine_ID=(SELECT MAX(C_OrderLine_ID) FROM C_OrderLine ol")
+			  .append(" WHERE i.C_Order_ID=ol.C_Order_ID AND i.AD_Client_ID=ol.AD_Client_ID  ")
+			  .append(" AND i.M_Product_ID=ol.M_Product_ID) ")
+			  .append("WHERE C_OrderLine_ID IS NULL AND C_Order_ID IS NOT NULL AND M_Product_ID IS NOT NULL")
+			  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 			no = DB.executeUpdate(sql.toString(), get_TrxName());
 			if (log.isLoggable(Level.FINE)) log.fine("Set OrderLine=" + no);
 			
-	// MInOut from Order
-			
+		// MInOut from Order	
 		sql = new StringBuilder ("UPDATE I_Invoice i ")
 		  .append("SET M_InOut_ID=(SELECT MAX(M_InOut_ID) FROM M_InOut o")
 		  .append(" WHERE i.InOutDocumentNo=o.DocumentNo AND i.AD_Client_ID=o.AD_Client_ID  AND i.AD_Org_ID=o.AD_Org_ID)")
 		  .append("WHERE M_InOut_ID IS NULL AND InOutDocumentNo IS NOT NULL")
 		  .append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Set InOut=" + no);	
-		
-	//MInOutLine from header
+		if (log.isLoggable(Level.FINE)) log.fine("Set InOut=" + no);
+		//MInOutLine from header
 		
 	sql = new StringBuilder ("UPDATE I_Invoice i ")
 	  .append("SET M_InOutLine_ID=(SELECT MAX(M_InOutLine_ID) FROM M_InOutLine ol")
@@ -983,6 +980,7 @@ public class ImportInvoice extends CustomProcess
 							imp.saveEx();
 						}
 					}
+					
 					if(imp.get_ValueAsInt("C_Order_ID") > 0)
 						invoice.setC_Order_ID(imp.get_ValueAsInt("C_Order_ID"));
 					

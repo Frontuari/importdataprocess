@@ -1,35 +1,65 @@
-# Import Data Process
+# importdataprocess
 
 ## Standard
 
 - New callout
+<<<<<<< HEAD
+  - Name: CName
+  - Package: net.frontuari.callout
+  - Example: net.frontuari.callout.CStringFormat
+=======
     * Name: CName
     * Package: net.frontuari.importdataprocess.callout
     * Example: net.frontuari.importdataprocess.callout.CStringFormat
+>>>>>>> refs/heads/pr-2
 
 - New process
+<<<<<<< HEAD
+  - Name: PName
+  - Package: net.frontuari.process
+  - Example: net.frontuari.process.PGenerateWithholding
+=======
     * Name: PName
     * Package: net.frontuari.importdataprocess.process
     * Example: net.frontuari.importdataprocess.process.PGenerateWithholding
+>>>>>>> refs/heads/pr-2
 
 - New form
+<<<<<<< HEAD
+  - Name: FName
+  - Package: net.frontuari.form
+  - Example: net.frontuari.form.FMultiPayment
+=======
     * Name: FName
     * Package: net.frontuari.importdataprocess.form
     * Example: net.frontuari.importdataprocess.form.FMultiPayment
+>>>>>>> refs/heads/pr-2
 
 - New event
+<<<<<<< HEAD
+  - Name: EName
+  - Package: net.frontuari.event
+  - Example: net.frontuari.event.EAfterCompleteInvoice
+=======
     * Name: EName
     * Package: net.frontuari.importdataprocess.event
     * Example: net.frontuari.importdataprocess.event.EAfterCompleteInvoice
+>>>>>>> refs/heads/pr-2
 
 - New model (extends class X)
+<<<<<<< HEAD
+  - Name: MName
+  - Package: net.frontuari.model
+  - Example: net.frontuari.model.MTableExample
+=======
     * Name: MName
     * Package: net.frontuari.importdataprocess.model
     * Example: net.frontuari.importdataprocess.model.MTableExample
+>>>>>>> refs/heads/pr-2
 
 ## Folder estructure
 
-```
+```text
     net.frontuari.importdataprocess
         |_.settings
         |   |_org.eclipse.core.resources.prefs
@@ -57,12 +87,19 @@
                 |_base (plugin core)
                 |   |_BundleInfo.java (gets plugin information dynamically)
                 |   |_CustomCallout.java (IColumnCallout implementation)
+<<<<<<< HEAD
+=======
                 |   |_CustomEventFactory.java (AbstractEventHandler implementation)
+>>>>>>> refs/heads/pr-2
                 |   |_CustomEvent.java (for event implementation)
                 |   |_CustomForm.java (IFormController implementation)
                 |   |_CustomProcess.java (SvrProcess implementation)
                 |_component (plugin's components)
+<<<<<<< HEAD
+                |   |_CalloutFactory.java (registers callout classes automatically)
+=======
                 |   |_CalloutFactory.java (registers callout classes automatically )
+>>>>>>> refs/heads/pr-2
                 |   |_EventFactory.java (registers event handler classes automatically)
                 |   |_FormFactory.java (registers form classes automatically)
                 |   |_ProcessFactory.java (registers process classes automatically)
@@ -84,28 +121,56 @@
 ### Components
 
 - New callout
+<<<<<<< HEAD
+  - Create callout in package `net.frontuari.callout`, extends from `CustomCallout`
+  - Annotate it with the `@Callout` annotation at class level
+=======
     * Create callout in package `net.frontuari.importdataprocess.callout`, extends from `CustomCallout`
     * Annotate it with the `@Callout` annotation at class level
+>>>>>>> refs/heads/pr-2
 
 - New process
+<<<<<<< HEAD
+  - Create process in package `net.frontuari.process`, extends from `CustomProcess`
+  - Annotate it with the `@Process` annotation at class level
+=======
     * Create process in package `net.frontuari.importdataprocess.process`, extends from `CustomProcess`
     * Annotate it with the `@Process` annotation at class level
+>>>>>>> refs/heads/pr-2
 
 - New form
+<<<<<<< HEAD
+  - Create form in package `net.frontuari.form`, extends from `CustomForm`
+  - Annotate it with the `@Form` annotation at class level
+=======
     * Create form in package `net.frontuari.importdataprocess.form`, extends from `CustomForm`
     * Annotate it with the `@Form` annotation at class level
+>>>>>>> refs/heads/pr-2
 
 - New event
+<<<<<<< HEAD
+  - Create event in package `net.frontuari.event`, extends from `CustomEvent`
+  - Annotate it with the `@EventTopicDelegate` annotation at class level
+=======
     * Create event in package `net.frontuari.importdataprocess.event`, extends from `CustomEvent`
     * Annotate it with the `@EventTopicDelegate` annotation at class level
+>>>>>>> refs/heads/pr-2
 
 - New model (extends form class X)
+<<<<<<< HEAD
+  - Create model in package `net.frontuari.model`, extends class `X`. Example: `X_TL_TableExample -> MTableExample`
+  - Annotate it with the `@Model` annotation at class level
+  - More information
+    - <https://wiki.idempiere.org/en/Developing_Plug-Ins_-_IModelFactory>
+    - <https://wiki.idempiere.org/en/Developing_iDempiere_4:_Create_a_new_class_model_with_window_and_tabs#Model_generator>
+=======
     * Create model in package `net.frontuari.importdataprocess.model`, extends class `X`. Example: `X_TL_TableExample -> MTableExample`
     * Annotate it with the `@Model` annotation at class level
     * More information
         * https://wiki.idempiere.org/en/Developing_Plug-Ins_-_IModelFactory
         * https://wiki.idempiere.org/en/Developing_iDempiere_4:_Create_a_new_class_model_with_window_and_tabs#Model_generator
 
+>>>>>>> refs/heads/pr-2
 
 ### Utils
 
@@ -147,7 +212,7 @@ The output:
 20:34:24.270 ELogLoginInfo.log: message="Hello World!!"
 ```
 
-Othes output examples:
+Other output examples:
 
 ```css
 19:50:16.044 OpenTransactionInterceptor.log: dateTime="2020-02-12 19:50:16.039 -0500" httpMethod="POST" client="11" language="es_CO" endpoint="/api/auth/login" transaction="Trx_e1dcd314-a508-44c1-9a0c-d34d4caacb2b" [33]
@@ -190,6 +255,7 @@ Add the new dependency (`artifacItem`) to the [pom.xml](pom.xml) file in the `ar
 ```
 
 Then, add a new classpath entry in the [.classpath](.classpath) file, example:
+
 ```xml
     <classpathentry kind="lib" path="lib/guava.jar"/>
 ```
@@ -212,4 +278,4 @@ Bundle-ClassPath: .,
 
 ---
 
-> Plugin skeleton generated by https://github.com/ingeint/idempiere-plugin-scaffold
+> Plugin skeleton generated by <https://github.com/ingeint/idempiere-plugin-scaffold>
