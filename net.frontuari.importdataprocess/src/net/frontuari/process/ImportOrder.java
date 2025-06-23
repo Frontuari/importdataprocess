@@ -17,10 +17,13 @@
 package net.frontuari.process;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.logging.Level;
 
 import org.adempiere.base.annotation.Process;
@@ -29,6 +32,8 @@ import org.compiere.model.MBPartnerLocation;
 import org.compiere.model.MLocation;
 import org.compiere.model.MOrder;
 import org.compiere.model.MOrderLine;
+import org.compiere.model.MProduct;
+import org.compiere.model.MSysConfig;
 import org.compiere.model.MUser;
 import org.compiere.model.X_I_Order;
 import org.compiere.process.ProcessInfoParameter;
@@ -36,6 +41,9 @@ import org.compiere.util.DB;
 import org.compiere.util.Env;
 
 import net.frontuari.base.CustomProcess;
+import net.frontuari.custom.model.FTUMOrderLine;
+import net.frontuari.model.X_FTU_OLD;
+import net.frontuari.model.X_FTU_RLD;
 
 
 /**
@@ -56,7 +64,7 @@ public class ImportOrder extends CustomProcess
 	/**	Delete old Imported				*/
 	private boolean			m_deleteOldImported = false;
 	/**	Document Action					*/
-	private String			m_docAction = MOrder.DOCACTION_Prepare;
+	private String			m_docAction = null;
 	/** Effective						*/
 	private Timestamp		m_DateValue = null;
 	/**	Only validate, don't import		*/
@@ -128,7 +136,7 @@ public class ImportOrder extends CustomProcess
 		//	Set Client, Org, IsActive, Created/Updated
 		sql = new StringBuilder ("UPDATE I_Order ")
 			  .append("SET AD_Client_ID = COALESCE (AD_Client_ID,").append (m_AD_Client_ID).append ("),")
-			//  .append(" AD_Org_ID = COALESCE (AD_OrgTrx_ID,").append (m_AD_Org_ID).append ("),")
+			  .append(" AD_Org_ID = COALESCE (AD_OrgTrx_ID,").append (m_AD_Org_ID).append ("),")
 			  .append(" IsActive = COALESCE (IsActive, 'Y'),")
 			  .append(" Created = COALESCE (Created, SysDate),")
 			  .append(" CreatedBy = COALESCE (CreatedBy, 0),")
@@ -525,6 +533,25 @@ public class ImportOrder extends CustomProcess
 		if (no != 0)
 			log.warning ("Invalid Product=" + no);
 
+		sql = new StringBuilder ("UPDATE I_Order o ")
+				.append("SET UserLine1_ID=(SELECT ev.c_elementvalue_id FROM AD_Tree tree ")
+				.append("join C_Element e on tree.AD_Tree_ID = e.AD_Tree_ID ")
+				.append("join C_ElementValue ev on ev.c_element_id = e.c_element_id ")
+				.append(" WHERE o.UserLine1Value=ev.value AND o.AD_Client_ID=tree.AD_Client_ID AND tree.TreeType = 'U1' AND e.ElementType = 'U') ")
+				.append("WHERE UserLine1_ID IS NULL AND UserLine1Value IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set UserLine1_ID from UserLine1Value=" + no);
+		
+		sql = new StringBuilder ("UPDATE I_Order o ")
+				.append("SET Account_ID=(SELECT ev.c_elementvalue_id FROM AD_Tree tree ")
+				.append("join C_Element e on tree.AD_Tree_ID = e.AD_Tree_ID ")
+				.append("join C_ElementValue ev on ev.c_element_id = e.c_element_id ")
+				.append(" WHERE o.AccountValue=ev.value AND o.AD_Client_ID=tree.AD_Client_ID AND tree.TreeType = 'EV' AND e.ElementType = 'A') ")
+				.append("WHERE Account_ID IS NULL AND AccountValue IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Account_ID from AccountValue=" + no);
 		//	Charge
 		sql = new StringBuilder ("UPDATE I_Order o ")
 			  .append("SET C_Charge_ID=(SELECT C_Charge_ID FROM C_Charge c")
@@ -594,6 +621,21 @@ public class ImportOrder extends CustomProcess
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning("No UoM=" + no);
+		
+		// It is filtered using TaxID as the search criteria, ensuring that the SalesRep_Value of I_Order matches the TaxID of C_BPartner.
+		//Added by Joaquin Mora 25/03/2025
+		sql = new StringBuilder("UPDATE I_Order o ")
+			      .append("SET SalesRep_ID=(SELECT MAX(u.AD_User_ID) FROM AD_User u ")
+			      .append(" JOIN C_BPartner cb ON u.C_BPartner_ID = cb.C_BPartner_ID ")
+			      .append(" WHERE o.SalesRep_Value = cb.TaxID ")
+			      .append(" AND o.AD_Client_ID = cb.AD_Client_ID ")
+			      .append(" AND cb.IsSalesRep = 'Y' AND cb.IsActive = 'Y')")
+			      .append(" WHERE SalesRep_ID IS NULL AND SalesRep_Value IS NOT NULL")
+			      .append(" AND I_IsImported<>'Y'").append(clientCheck);
+
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (log.isLoggable(Level.FINE)) log.fine("Set SalesRep from Value=" + no);
+		
 
 		//	instancia atribute
 		//Added by Jose Vasquez 27/05/2024
@@ -771,206 +813,238 @@ public class ImportOrder extends CustomProcess
 		
 		//	-- New Orders -----------------------------------------------------
 
+
 		int noInsert = 0;
 		int noInsertLine = 0;
+		Integer maxLinesByDocument = MSysConfig.getIntValue("MAXLINESBYDOCUMENT", 0, getAD_Client_ID());
 
-		//	Go through Order Records w/o
-		sql = new StringBuilder ("SELECT * FROM I_Order ")
-			.append("WHERE I_IsImported='N'").append (clientCheck)
-			.append(" ORDER BY AD_Org_ID,C_BPartner_ID,C_DocType_ID,DocumentNo,C_Currency_ID, BillTo_ID, C_BPartner_Location_ID, I_Order_ID");
-		try
-		{
-			pstmt = DB.prepareStatement (sql.toString(), get_TrxName());
-			rs = pstmt.executeQuery ();
-			//
-			int oldC_BPartner_ID = 0;
-			int oldBillTo_ID = 0;
-			int oldC_BPartner_Location_ID = 0;
-			int oldCurrency_ID = 0;
-			String oldDocumentNo = "";
-			//
-			MOrder order = null;
-			int lineNo = 0;
-			while (rs.next ())
-			{
-				X_I_Order imp = new X_I_Order (getCtx (), rs, get_TrxName());
-				String cmpDocumentNo = imp.getDocumentNo();
-				if (cmpDocumentNo == null)
-					cmpDocumentNo = "";
-				String oldPOReference = (String)(imp.get_Value("POReference")) ;
-				if (oldPOReference == null)
-					oldPOReference = "";
-				//	New Order
-				if (oldC_BPartner_ID != imp.getC_BPartner_ID() 
-					|| oldC_BPartner_Location_ID != imp.getC_BPartner_Location_ID()
-					|| oldBillTo_ID != imp.getBillTo_ID()
-					|| !oldPOReference.equals(imp.get_Value("POReference"))
-					|| oldCurrency_ID != imp.getC_Currency_ID() 
-					|| !oldDocumentNo.equals(cmpDocumentNo))
-				{
-					if (order != null)
-					{
-						if (m_docAction != null && m_docAction.length() > 0)
-						{
-							order.setDocAction(m_docAction);
-							if(!order.processIt (m_docAction)) {
-								log.warning("Order Process Failed: " + order + " - " + order.getProcessMsg());
-								throw new IllegalStateException("Order Process Failed: " + order + " - " + order.getProcessMsg());
-								
-							}
-						}
-						order.saveEx();
-					}
-					oldC_BPartner_ID = imp.getC_BPartner_ID();
-					oldC_BPartner_Location_ID = imp.getC_BPartner_Location_ID();
-					oldBillTo_ID = imp.getBillTo_ID();
-					oldCurrency_ID = imp.getC_Currency_ID();
-					oldPOReference.equals(imp.get_Value("POReference"));
-					oldDocumentNo = imp.getDocumentNo();
-					if (oldDocumentNo == null)
-						oldDocumentNo = "";
-					//
-					order = new MOrder (getCtx(), 0, get_TrxName());
-					order.setClientOrg (imp.getAD_Client_ID(), imp.getAD_OrgTrx_ID());
-					order.setC_DocTypeTarget_ID(imp.getC_DocType_ID());
-					order.setIsSOTrx(imp.isSOTrx());
-					if (imp.get_Value("POReference") != null ) {
-						order.setPOReference((String) imp.get_Value("POReference"));
-					}
-					if (imp.getDeliveryRule() != null ) {
-						order.setDeliveryRule(imp.getDeliveryRule());
-					}
-					if (imp.getDocumentNo() != null)
-						order.setDocumentNo(imp.getDocumentNo());
-					//	Ship Partner
-					order.setC_BPartner_ID(imp.getC_BPartner_ID());
-					order.setC_BPartner_Location_ID(imp.getC_BPartner_Location_ID());
-					if (imp.getAD_User_ID() != 0)
-						order.setAD_User_ID(imp.getAD_User_ID());
-					//	Bill Partner
-					order.setBill_BPartner_ID(imp.getC_BPartner_ID());
-					order.setBill_Location_ID(imp.getBillTo_ID());
-					//
-					if (imp.getDescription() != null)
-						order.setDescription(imp.getDescription());
-					order.setC_PaymentTerm_ID(imp.getC_PaymentTerm_ID());
-					order.setM_PriceList_ID(imp.getM_PriceList_ID());
-					order.setM_Warehouse_ID(imp.getM_Warehouse_ID());
-					if (imp.getM_Shipper_ID() != 0)
-						order.setM_Shipper_ID(imp.getM_Shipper_ID());
-					//	SalesRep from Import or the person running the import
-					if (imp.getSalesRep_ID() != 0)
-						order.setSalesRep_ID(imp.getSalesRep_ID());
-					if (order.getSalesRep_ID() == 0)
-						order.setSalesRep_ID(getAD_User_ID());
-					//
-				/*	if (imp.getAD_OrgTrx_ID() != 0)
-						order.setAD_OrgTrx_ID(imp.getAD_OrgTrx_ID());*/
-					if (imp.getC_Activity_ID() != 0)
-						order.setC_Activity_ID(imp.getC_Activity_ID());
-					if (imp.getC_Campaign_ID() != 0)
-						order.setC_Campaign_ID(imp.getC_Campaign_ID());
-					if (imp.getC_Project_ID() != 0)
-						order.setC_Project_ID(imp.getC_Project_ID());
-					//
-					if (imp.getDateOrdered() != null)
-						order.setDateOrdered(imp.getDateOrdered());
-					if (imp.getDateAcct() != null)
-						order.setDateAcct(imp.getDateAcct());
-					if (imp.get_ValueAsInt("User1_ID") != 0)
-						order.setUser1_ID(imp.get_ValueAsInt("User1_ID"));
-				
-					//Conversion Type
-					int C_ConversionType_ID = imp.get_ValueAsInt("C_ConversionType_ID");
-					if(C_ConversionType_ID>0)
-						order.setC_ConversionType_ID(C_ConversionType_ID);
-					// Set Order Source
-					if (imp.getC_OrderSource() != null)
-						order.setC_OrderSource_ID(imp.getC_OrderSource_ID());
-					//
-					order.saveEx();
-					noInsert++;
-					lineNo = 10;
-				}
-				imp.setC_Order_ID(order.getC_Order_ID());
-				//	New OrderLine
-				MOrderLine line = new MOrderLine (order);
-				line.setLine(lineNo);
-				lineNo += 10;
-				if (imp.getM_Product_ID() != 0) {
-					line.setM_Product_ID(imp.getM_Product_ID(), true);
-					line.setC_UOM_ID(imp.getC_UOM_ID());
-				}
-				if (imp.getC_Charge_ID() != 0)
-					line.setC_Charge_ID(imp.getC_Charge_ID());
-				line.setQty(imp.getQtyOrdered());
-				line.setPrice();
-				if (imp.getPriceActual().compareTo(Env.ZERO) != 0)
-					line.setPrice(imp.getPriceActual());					
-				if (imp.get_ValueAsInt("AttributesetInstance") != 0)
-					line.setM_AttributeSetInstance_ID(imp.get_ValueAsInt("AttributesetInstance"));
-				if (imp.getC_Tax_ID() != 0)
-					line.setC_Tax_ID(imp.getC_Tax_ID());
-				else
-				{
-					line.setTax();
-					imp.setC_Tax_ID(line.getC_Tax_ID());
-				}
-				if (imp.getFreightAmt() != null)
-					line.setFreightAmt(imp.getFreightAmt());
-				if (imp.getLineDescription() != null)
-					line.setDescription(imp.getLineDescription());
-				if (imp.getC_UOM_ID() != 0)
-					line.setC_UOM_ID(imp.getC_UOM_ID());
-				if (imp.getC_Activity_ID() != 0)
-					line.setC_Activity_ID(imp.getC_Activity_ID());
-				if (imp.get_ValueAsInt("AD_User1") != 0)
-					line.setUser1_ID(imp.get_ValueAsInt("AD_User1"));
-				
-				line.saveEx();
-				imp.setC_OrderLine_ID(line.getC_OrderLine_ID());
-				imp.setI_IsImported(true);
-				imp.setProcessed(true);
-				//
-				if (imp.save())
-					noInsertLine++;
-			}
-			if (order != null)
-			{
-				if (m_docAction != null && m_docAction.length() > 0)
-				{
-					order.setDocAction(m_docAction);
-					if(!order.processIt (m_docAction)) {
-						log.warning("Order Process Failed: " + order + " - " + order.getProcessMsg());
-						throw new IllegalStateException("Order Process Failed: " + order + " - " + order.getProcessMsg());
-						
-					}
-				}
-				order.saveEx();
-			}
-		}
-		catch (Exception e)
-		{
-			log.log(Level.SEVERE, "Order - " + sql.toString(), e);
-		}
-		finally
-		{
-			DB.close(rs, pstmt);
-			rs = null;
-			pstmt = null;
+		if (maxLinesByDocument <= 0) {
+		    maxLinesByDocument = Integer.MAX_VALUE;
 		}
 
-		//	Set Error to indicator to not imported
-		sql = new StringBuilder ("UPDATE I_Order ")
-			.append("SET I_IsImported='N', Updated=SysDate ")
-			.append("WHERE I_IsImported<>'Y'").append(clientCheck);
+		sql = new StringBuilder("SELECT * FROM I_Order ")
+		    .append("WHERE I_IsImported='N'").append(clientCheck)
+		    .append(" ORDER BY AD_Org_ID,C_BPartner_ID,C_DocType_ID,DocumentNo,C_Currency_ID, BillTo_ID, C_BPartner_Location_ID, POReference, I_Order_ID");
+
+		try {
+		    pstmt = DB.prepareStatement(sql.toString(), get_TrxName());
+		    rs = pstmt.executeQuery();
+
+		    int oldC_BPartner_ID = 0;
+		    int oldBillTo_ID = 0;
+		    int oldC_BPartner_Location_ID = 0;
+		    int oldCurrency_ID = 0;
+		    int oldSalesrep_ID = 0;
+		    String oldDocumentNo = "";
+		    String oldPOReference = "";
+
+		    MOrder order = null;
+		    int lineNo = 0;
+		    int currentLineCount = 0;
+		    
+		    Map<String, FTUMOrderLine> lineMap = new HashMap<>();
+
+		    while (rs.next()) {
+		        X_I_Order imp = new X_I_Order(getCtx(), rs, get_TrxName());
+		        String cmpDocumentNo = imp.getDocumentNo();
+		        if (cmpDocumentNo == null) cmpDocumentNo = "";
+
+		        String cmpPOReference = imp.get_ValueAsString("POReference");
+		        if (cmpPOReference == null) cmpPOReference = "";
+
+		        if (order == null || oldC_BPartner_ID != imp.getC_BPartner_ID() 
+		            || oldC_BPartner_Location_ID != imp.getC_BPartner_Location_ID()
+		            || oldBillTo_ID != imp.getBillTo_ID()
+		            || oldSalesrep_ID != imp.getSalesRep_ID()
+		            || oldCurrency_ID != imp.getC_Currency_ID()
+		            || !oldDocumentNo.equals(cmpDocumentNo) 
+		            || !oldPOReference.equals(cmpPOReference)
+		            || currentLineCount >= maxLinesByDocument) {
+
+		            if (order != null) {
+		                if (m_docAction != null && m_docAction.length() > 0) {
+		                    order.setDocAction(m_docAction);
+		                    if (!order.processIt(m_docAction)) {
+		                        log.warning("Order Process Failed: " + order + " - " + order.getProcessMsg());
+		                        throw new IllegalStateException("Order Process Failed: " + order + " - " + order.getProcessMsg());
+		                    }
+		                }
+		                order.saveEx();
+		            }
+
+		            oldC_BPartner_ID = imp.getC_BPartner_ID();
+		            oldC_BPartner_Location_ID = imp.getC_BPartner_Location_ID();
+		            oldBillTo_ID = imp.getBillTo_ID();
+		            oldCurrency_ID = imp.getC_Currency_ID();
+		            oldSalesrep_ID = imp.getSalesRep_ID(); 
+		            oldDocumentNo = imp.getDocumentNo();
+		            oldPOReference = imp.get_ValueAsString("POReference");
+		            if (oldDocumentNo == null) oldDocumentNo = "";
+		            if (oldPOReference == null) oldPOReference = "";
+
+		            order = new MOrder(getCtx(), 0, get_TrxName());
+		            order.setClientOrg(imp.getAD_Client_ID(), imp.getAD_OrgTrx_ID());
+		            order.setC_DocTypeTarget_ID(imp.getC_DocType_ID());
+		            order.setIsSOTrx(imp.isSOTrx());
+		            if (imp.getDeliveryRule() != null) {
+		                order.setDeliveryRule(imp.getDeliveryRule());
+		            }
+		            order.setDocumentNo(imp.getDocumentNo());
+		            order.setPOReference(imp.get_ValueAsString("POReference"));
+		            order.setC_BPartner_ID(imp.getC_BPartner_ID());
+		            order.setC_BPartner_Location_ID(imp.getC_BPartner_Location_ID());
+		            if (imp.getAD_User_ID() != 0) order.setAD_User_ID(imp.getAD_User_ID());
+		            order.setBill_BPartner_ID(imp.getC_BPartner_ID());
+		            order.setBill_Location_ID(imp.getBillTo_ID());
+		            order.setDescription(imp.getDescription());
+		            order.setC_PaymentTerm_ID(imp.getC_PaymentTerm_ID());
+		            order.setM_PriceList_ID(imp.getM_PriceList_ID());
+		            order.setM_Warehouse_ID(imp.getM_Warehouse_ID());
+		            if (imp.getM_Shipper_ID() != 0) order.setM_Shipper_ID(imp.getM_Shipper_ID());
+		            if (imp.getSalesRep_ID() != 0) order.setSalesRep_ID(imp.getSalesRep_ID());
+		            if (order.getSalesRep_ID() == 0) order.setSalesRep_ID(getAD_User_ID());
+		            order.setDateOrdered(imp.getDateOrdered());
+		            order.setDateAcct(imp.getDateAcct());
+		            if (imp.get_Value("C_ConversionType_ID") != null) {
+		                order.setC_ConversionType_ID(imp.get_ValueAsInt("C_ConversionType_ID"));
+		            }
+		            if (order.isSOTrx()) {
+		                MBPartnerLocation bpl = new MBPartnerLocation(getCtx(), imp.getC_BPartner_Location_ID(), get_TrxName());
+		                if (bpl.get_Value("FTU_DeliveryRute_ID") != null) {
+		                    int deliveryRouteID = bpl.get_ValueAsInt("FTU_DeliveryRute_ID");
+		                    order.set_ValueOfColumn("FTU_DeliveryRute_ID", deliveryRouteID);
+		                }
+		            }
+		            order.saveEx();
+
+		            noInsert++;
+		            lineNo = 10;
+		            currentLineCount = 0;
+		        }
+
+		        imp.setC_Order_ID(order.getC_Order_ID());
+		        
+		        BigDecimal priceList = BigDecimal.ZERO;
+		        if (imp.get_Value("PriceList") != null) {
+		            priceList = new BigDecimal(imp.get_Value("PriceList").toString());
+		        }
+
+		        BigDecimal discountObj = BigDecimal.ZERO;
+		        if (order.isSOTrx()) {
+		            MBPartner bpartner = new MBPartner(getCtx(), imp.getC_BPartner_ID(), get_TrxName());
+		            if (bpartner.get_Value("FlatDiscount") != null)
+		                discountObj = new BigDecimal(bpartner.get_Value("FlatDiscount").toString());
+		            imp.set_ValueOfColumn("Discount", discountObj);
+		        }
+
+		        BigDecimal addDiscount = BigDecimal.ZERO;
+		        if (order.isSOTrx() && imp.get_Value("Add_Discount") != null) {
+		            addDiscount = new BigDecimal(imp.get_Value("Add_Discount").toString());
+		            imp.set_ValueOfColumn("Add_Discount", addDiscount);
+		        }
+
+		        // Calculamos el precio final aplicando descuentos
+		        BigDecimal finalPrice = priceList
+		                .subtract(priceList.multiply(discountObj).divide(new BigDecimal(100), 2, RoundingMode.HALF_UP))
+		                .subtract(priceList.multiply(addDiscount).divide(new BigDecimal(100), 2, RoundingMode.HALF_UP));
+
+		        // Crear clave para agrupamiento de líneas
+		        String lineKey = imp.getM_Product_ID() + "-" + imp.getQtyOrdered()
+		                + "-" + imp.getC_UOM_ID() + "-" + finalPrice;
+
+		        FTUMOrderLine line;
+		        if (!lineMap.containsKey(lineKey)) {
+		            line = new FTUMOrderLine(order);
+		            line.setLine(lineNo);
+		            lineNo += 10;
+
+		            if (imp.getM_Product_ID() != 0) {
+		                line.setM_Product_ID(imp.getM_Product_ID());
+		                line.setC_UOM_ID(imp.getC_UOM_ID());
+		            }
+
+		            if (imp.getC_Charge_ID() != 0) {
+		                line.setC_Charge_ID(imp.getC_Charge_ID());
+		            }
+
+		            line.setQty(imp.getQtyOrdered());
+		            line.setPriceList(priceList);
+		            line.setPriceEntered(finalPrice);
+		            line.setPriceActual(finalPrice);
+
+		            if (imp.getC_Tax_ID() != 0) {
+		                line.setC_Tax_ID(imp.getC_Tax_ID());
+		            } else {
+		                line.setTax();
+		                imp.setC_Tax_ID(line.getC_Tax_ID());
+		            }
+
+		            line.saveEx();
+		            lineMap.put(lineKey, line);
+		            noInsertLine++;
+		        } else {
+		            line = lineMap.get(lineKey);
+		        }
+
+		        // Crear X_FTU_OLD si aplica
+		        if (!imp.isSOTrx()) {
+		            Boolean isExpenseDistributiveFromImp = imp.get_ValueAsBoolean("IsExpenseDistributive");
+		            line.set_ValueOfColumn("IsExpenseDistributive", isExpenseDistributiveFromImp);
+		            line.saveEx();
+
+		            if (Boolean.TRUE.equals(isExpenseDistributiveFromImp)) {
+		                X_FTU_OLD rld = new X_FTU_OLD(getCtx(), 0, get_TrxName());
+		                rld.setC_OrderLine_ID(line.getC_OrderLine_ID());
+
+		                if (imp.get_ValueAsInt("UserLine1_ID") > 0)
+		                    rld.setUserLine1_ID(imp.get_ValueAsInt("UserLine1_ID"));
+
+		                if (imp.get_Value("Account_ID") != null)
+		                    rld.setAccount_ID(imp.get_ValueAsInt("Account_ID"));
+
+		                if (imp.get_Value("Amount") != null)
+		                    rld.setAmount((BigDecimal) imp.get_Value("Amount"));
+
+		                if (imp.get_Value("Description_Line") != null)
+		                    rld.setDescription_Line(imp.get_ValueAsString("Description_Line"));
+
+		                rld.saveEx();
+		            }
+		        }
+
+		        // Marcar imp como procesado
+		        imp.setC_OrderLine_ID(line.getC_OrderLine_ID());
+		        imp.setI_IsImported(true);
+		        imp.setProcessed(true);
+		        imp.setI_ErrorMsg(null);
+		        imp.saveEx();
+		    }
+
+		    if (order != null) {
+		        if (m_docAction != null && m_docAction.length() > 0) {
+		            order.setDocAction(m_docAction);
+		            if (!order.processIt(m_docAction)) {
+		                log.warning("Order Process Failed: " + order + " - " + order.getProcessMsg());
+		                throw new IllegalStateException("Order Process Failed: " + order + " - " + order.getProcessMsg());
+		            }
+		        }
+		        order.saveEx();
+		    }
+		} finally {
+		    DB.close(rs, pstmt);
+		    rs = null;
+		    pstmt = null;
+		}
+
+		sql = new StringBuilder("UPDATE I_Order ")
+		    .append("SET I_IsImported='N', Updated=SysDate ")
+		    .append("WHERE I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		addLog (0, null, new BigDecimal (no), "@Errors@");
-		//
-		addLog (0, null, new BigDecimal (noInsert), "@C_Order_ID@: @Inserted@");
-		addLog (0, null, new BigDecimal (noInsertLine), "@C_OrderLine_ID@: @Inserted@");
+		addLog(0, null, new BigDecimal(no), "@Errors@");
+		addLog(0, null, new BigDecimal(noInsert), "@C_Order_ID@: @Inserted@");
+		addLog(0, null, new BigDecimal(noInsertLine), "@C_OrderLine_ID@: @Inserted@");
 		StringBuilder msgreturn = new StringBuilder("#").append(noInsert).append("/").append(noInsertLine);
 		return msgreturn.toString();
 	}	//	doIt
-
+  
 }	//	ImportOrder

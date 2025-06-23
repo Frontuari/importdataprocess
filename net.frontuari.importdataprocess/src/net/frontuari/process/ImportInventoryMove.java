@@ -19,7 +19,9 @@ package net.frontuari.process;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 
 import org.adempiere.base.annotation.Process;
@@ -45,6 +47,7 @@ import org.compiere.util.Msg;
 import org.eevolution.model.X_I_Movement;
 
 import net.frontuari.base.CustomProcess;
+import net.frontuari.custom.model.FTUMMovement;
 
 /**
  *	Import Inventory Movement from I_M_Movemen
@@ -129,48 +132,69 @@ public class ImportInventoryMove extends CustomProcess {
 	 * import records using I_M_Movement table
 	 */
 	
-	private void importRecords()
-	{
+	private void importRecords() {
 		if (m_IsImportOnlyNoErrors && m_ErrorsFound)
-			return; // not importing because error were found
+			return;
 
 		isImported = false;
 
-		for(X_I_Movement imove : getRecords(false,true))
-		{
-			MMovement mov = importMInventoryMove(imove);			
-			if(mov!= null)
-			{    
+		// Agrupar registros por clave de encabezado
+		Map<String, List<X_I_Movement>> groupedRecords = new HashMap<>();
+		for (X_I_Movement imove : getRecords(false, true)) {
+			String key = generateKey(imove);
+			groupedRecords.computeIfAbsent(key, k -> new ArrayList<>()).add(imove);
+		}
+
+		// Procesar cada grupo
+		for (Map.Entry<String, List<X_I_Movement>> entry : groupedRecords.entrySet()) {
+			List<X_I_Movement> group = entry.getValue();
+			if (group.isEmpty()) continue;
+
+			X_I_Movement first = group.get(0);  // Usamos este para generar el encabezado
+			MMovement mov = importMInventoryMove(first);  // Crear nuevo encabezado
+			if (mov == null || mov.getM_Movement_ID() <= 0) {
+				notimported += group.size();
+				continue;
+			}
+
+			boolean allImported = true;
+			for (X_I_Movement imove : group) {
 				imove.setM_Movement_ID(mov.getM_Movement_ID());
 				imove.saveEx();
-				isImported = importMInventoryMoveLine(mov,imove);
-			}	
-			else
-			{    
-				isImported = false;
-			}	
-			
-			if(isImported)
-			{
-				imove.setI_IsImported(true);
-				imove.setProcessed(true);
-				imove.saveEx();
-				imported++;
-				
-				//mov.processIt(m_docAction);
+				isImported = importMInventoryMoveLine(mov, imove);
+				if (isImported) {
+					imove.setI_IsImported(true);
+					imove.setProcessed(true);
+					imove.saveEx();
+					imported++;
+				} else {
+					imove.setI_IsImported(false);
+					imove.setProcessed(false);
+					imove.saveEx();
+					notimported++;
+					allImported = false;
+				}
+			}
+
+			if (allImported) {
 				addForProcess(mov.getM_Movement_ID());
 				mov.saveEx();
-			}
-			else
-			{
-				imove.setI_IsImported(false);
-				imove.setProcessed(false);
-				imove.saveEx();
-				notimported++;
 			}
 		}
 		processAll();
 	}
+
+	private String generateKey(X_I_Movement imove) {
+		StringBuilder key = new StringBuilder();
+		key.append(imove.getAD_Org_ID()).append("_");
+		key.append(imove.getDocumentNo()).append("_");
+		key.append(imove.getMovementDate()).append("_");
+		key.append(imove.getM_Locator().getM_Warehouse_ID()).append("_");
+		key.append(imove.getM_LocatorTo().getM_Warehouse_ID()).append("_");
+		key.append(imove.getC_DocType_ID());
+		return key.toString();
+	}
+
 	
 	private void addForProcess(int id)
 	{
@@ -190,7 +214,7 @@ public class ImportInventoryMove extends CustomProcess {
 		for(String idx : idsPr)
 		{
 			int id = Integer.parseInt(idx);
-			MMovement move = new MMovement(Env.getCtx(), id, get_TrxName());
+			FTUMMovement move = new FTUMMovement(Env.getCtx(), id, get_TrxName());
 			move.processIt(m_docAction);
 			move.saveEx();
 		}
@@ -216,6 +240,7 @@ public class ImportInventoryMove extends CustomProcess {
 		try
 		{
 			moveLine.setM_Movement_ID(move.getM_Movement_ID());
+			log.warning(""+move.getM_Movement_ID());
 			moveLine.setAD_Org_ID(imove.getAD_Org_ID());
 			moveLine.setM_Product_ID(imove.getM_Product_ID());
 			moveLine.setM_Locator_ID(imove.getM_Locator_ID());
@@ -317,24 +342,36 @@ public class ImportInventoryMove extends CustomProcess {
 	
 	private MMovement importMInventoryMove(X_I_Movement imove)
 	{
-	    	final String  whereClause = I_M_Movement.COLUMNNAME_MovementDate + "= ? AND "
-	    				  + I_M_Movement.COLUMNNAME_DocumentNo + "=? AND "	  
-	    				  + I_M_Movement.COLUMNNAME_C_DocType_ID+"=?";
-		int oldID = new Query(Env.getCtx(), I_M_Movement.Table_Name,whereClause, get_TrxName())
-		.setClient_ID()
-		.setParameters(imove.getMovementDate(), imove.getDocumentNo(), imove.getC_DocType_ID())
-		.firstId();
-		
-		MMovement move = null;
-		if(oldID<=0)
-		{
+		// Obtener almacenes desde los localizadores
+		int warehouseFrom_ID = imove.getM_Locator().getM_Warehouse_ID();
+		int warehouseTo_ID = imove.getM_LocatorTo().getM_Warehouse_ID();
+
+		final String whereClause = I_M_Movement.COLUMNNAME_MovementDate + "= ? AND "
+				+ I_M_Movement.COLUMNNAME_DocumentNo + "=? AND "
+				+ I_M_Movement.COLUMNNAME_C_DocType_ID + "=? AND "
+				+ "M_Warehouse_ID=? AND M_WarehouseTo_ID=?"; // Campos personalizados
+
+		int oldID = new Query(Env.getCtx(), I_M_Movement.Table_Name, whereClause, get_TrxName())
+				.setClient_ID()
+				.setParameters(
+					imove.getMovementDate(),
+					imove.getDocumentNo(),
+					imove.getC_DocType_ID(),
+					warehouseFrom_ID,
+					warehouseTo_ID
+				)
+				.firstId();
+
+		FTUMMovement move = null;
+		if (oldID <= 0)
 			oldID = 0;
-		}
-		
-		move = new MMovement(Env.getCtx(), oldID, get_TrxName());
-		
-		try{
-			move.setDocumentNo(imove.getDocumentNo());
+
+		move = new FTUMMovement(Env.getCtx(), oldID, get_TrxName());
+
+		try {
+			if (imove.getDocumentNo() != null && imove.getDocumentNo().length() > 0) {
+				move.setDocumentNo(imove.getDocumentNo());
+			}
 			move.setC_DocType_ID(imove.getC_DocType_ID());
 			move.setAD_Org_ID(imove.getAD_Org_ID());
 			move.setMovementDate(imove.getMovementDate());
@@ -343,18 +380,27 @@ public class ImportInventoryMove extends CustomProcess {
 			move.setC_Project_ID(imove.getC_Project_ID());
 			move.setC_Campaign_ID(imove.getC_Campaign_ID());
 			move.setAD_OrgTrx_ID(imove.getAD_OrgTrx_ID());
-			//	Added By Jorge Colmenarez, 2021-11-12 10:51
-			//	Support for OrgTarget
 			move.set_ValueOfColumn("AD_OrgTarget_ID", imove.getAD_OrgTrx_ID());
-			//	End Jorge Colmenarez
+			move.setM_Warehouse_ID(warehouseFrom_ID);
+			move.setM_WarehouseTo_ID(warehouseTo_ID);
+
 			move.saveEx();
-		}
-		catch(Exception e)
-		{	
-			imove.setI_ErrorMsg(e.getMessage());
+
+			if (move.getM_Movement_ID() <= 0) {
+				throw new IllegalStateException("No se pudo guardar MMovement");
+			}
+
+			log.warning("Movimiento guardado: " + move.getDocumentNo());
+
+		} catch (Exception e) {
+			String errMsg = "Error al guardar MMovement:\n"
+					+ "- DocumentNo: " + imove.getDocumentNo() + "\n"
+					+ "- Error: " + e.getMessage();
+			imove.setI_ErrorMsg(errMsg);
 			isImported = false;
+			throw new RuntimeException(errMsg, e);
 		}
-		
+
 		return move;
 	}
 

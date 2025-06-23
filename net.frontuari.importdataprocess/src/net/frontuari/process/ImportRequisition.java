@@ -24,6 +24,7 @@ import java.sql.Timestamp;
 import java.util.logging.Level;
 
 import org.adempiere.base.annotation.Process;
+import org.adempiere.exceptions.AdempiereException;
 import org.adempiere.model.ImportValidator;
 import org.adempiere.process.ImportProcess;
 import org.compiere.model.MRequisition;
@@ -34,7 +35,8 @@ import org.compiere.util.DB;
 import org.compiere.util.Env;
 
 import net.frontuari.base.CustomProcess;
-
+import net.frontuari.custom.model.FTUMRequisition;
+import net.frontuari.model.X_FTU_RLD;
 import net.frontuari.model.X_I_Requisition;
 
 /**
@@ -303,6 +305,33 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		if (no != 0)
 			log.warning ("Invalid Product=" + no);
 
+		sql = new StringBuilder ("UPDATE I_Requisition o ")
+				.append("SET UserLine1_ID=(SELECT ev.c_elementvalue_id FROM AD_Tree tree ")
+				.append("join C_Element e on tree.AD_Tree_ID = e.AD_Tree_ID ")
+				.append("join C_ElementValue ev on ev.c_element_id = e.c_element_id ")
+				.append(" WHERE o.UserLine1Value=ev.value AND o.AD_Client_ID=tree.AD_Client_ID AND tree.TreeType = 'U1' AND e.ElementType = 'U') ")
+				.append("WHERE UserLine1_ID IS NULL AND UserLine1Value IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set UserLine1_ID from UserLine1Value=" + no);
+		sql = new StringBuilder ("UPDATE I_Requisition o ")
+				.append("SET Account_ID=(SELECT ev.c_elementvalue_id FROM AD_Tree tree ")
+				.append("join C_Element e on tree.AD_Tree_ID = e.AD_Tree_ID ")
+				.append("join C_ElementValue ev on ev.c_element_id = e.c_element_id ")
+				.append(" WHERE o.AccountValue=ev.value AND o.AD_Client_ID=tree.AD_Client_ID AND tree.TreeType = 'EV' AND e.ElementType = 'A') ")
+				.append("WHERE Account_ID IS NULL AND AccountValue IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Account_ID from AccountValue=" + no);
+		sql = new StringBuilder ("UPDATE I_Requisition o ")
+				.append("SET PurchasingGroup_ID=(SELECT pg.PurchasingGroup_ID FROM PurchasingGroup pg ")
+				.append("WHERE pg.value = o.purchasegroupvalue) ")
+				.append("WHERE PurchasingGroup_ID IS NULL AND purchasegroupvalue IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Account_ID from AccountValue=" + no);
+		
+		
 		//	Charge
 		sql = new StringBuilder ("UPDATE I_Requisition o ")
 			  .append("SET C_Charge_ID=(SELECT MAX(C_Charge_ID) FROM C_Charge c")
@@ -369,16 +398,22 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		//	Go through Requisition Records w/o
 		sql = new StringBuilder ("SELECT * FROM I_Requisition ")
 			  .append("WHERE I_IsImported='N'").append (clientCheck)
-			.append(" ORDER BY AD_OrgTrx_ID,AD_User_ID,C_DocType_ID,DocumentNo,I_Requisition_ID");
+			.append(" ORDER BY AD_OrgTrx_ID,AD_User_ID,C_DocType_ID,DocumentNo,I_Requisition_ID,M_Requisition_ID,M_Product_ID,C_Charge_ID,Qty,IsExpenseDistributive");
 		try
 		{
 			pstmt = DB.prepareStatement (sql.toString(), get_TrxName());
 			rs = pstmt.executeQuery ();
 			
 			int oldUser_ID = 0;
+			int oldRequisition_ID = 0;
+			int oldProduct_ID = 0;
+			int oldCharge_ID = 0;
+			int oldRequisitionLine_ID = 0;
+			BigDecimal oldQty_ID = BigDecimal.ZERO;
+			Boolean OldIsExpenseDistributive = null;
 			String oldDocumentNo = "";
 			//
-			MRequisition req = null;
+			FTUMRequisition req = null;
 			int lineNo = 0;
 			while (rs.next ())
 			{
@@ -395,7 +430,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 						if (m_docAction != null && m_docAction.length() > 0)
 						{
 							req.setDocAction(m_docAction);
-							if(!req.processIt (m_docAction)) {
+							if(req.processIt (m_docAction)) {
 								log.warning("Requisition Process Failed: " + req + " - " + req.getProcessMsg());
 								DB.close(rs, pstmt);
 								throw new IllegalStateException("Order Process Failed: " + req + " - " + req.getProcessMsg());
@@ -408,7 +443,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 					oldDocumentNo = imp.getDocumentNo();
 					if (oldDocumentNo == null)
 						oldDocumentNo = "";
-					req = new MRequisition(getCtx(), 0, get_TrxName());
+					req = new FTUMRequisition(getCtx(), 0, get_TrxName());
 					req.setAD_Org_ID(imp.getAD_OrgTrx_ID());
 					req.setC_DocType_ID(imp.getC_DocType_ID());
 					req.setAD_User_ID(imp.getAD_User_ID());
@@ -458,42 +493,76 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 				}
 				//	Update Import Requisition ID
 				imp.setM_Requisition_ID(req.getM_Requisition_ID());
-				//	New Requisition Line
-				MRequisitionLine line = new MRequisitionLine(req);
-				line.setLine(lineNo);
-				lineNo += 10;
-				//	Validate BPartner
-				if(imp.getC_BPartner_ID() > 0)
-					line.setC_BPartner_ID(imp.getC_BPartner_ID());
-				//	Validate Product
-				if(imp.getM_Product_ID()> 0)
-				{
-					line.setM_Product_ID(imp.getM_Product_ID());
-					if(imp.getC_UOM_ID() > 0)
-						line.setC_UOM_ID(imp.getC_UOM_ID());
-					else
-						line.setC_UOM_ID(imp.getM_Product().getC_UOM_ID());
+				Boolean isExpenseDistributiveFromImp = imp.get_ValueAsBoolean("IsExpenseDistributive");
+
+				boolean sameLine = (
+				    oldRequisition_ID == imp.getM_Requisition_ID() &&
+				    oldProduct_ID == imp.getM_Product_ID() &&
+				    oldCharge_ID == imp.getC_Charge_ID() &&
+				    oldQty_ID.compareTo(imp.getQty()) == 0 &&
+				    ((OldIsExpenseDistributive == null && isExpenseDistributiveFromImp == null) ||
+				     (OldIsExpenseDistributive != null && OldIsExpenseDistributive.equals(isExpenseDistributiveFromImp)))
+				);
+
+				// Solo si no es la misma línea, se crea una nueva
+				if (!sameLine) {
+				    MRequisitionLine line = new MRequisitionLine(req);
+				    line.setLine(lineNo);
+				    lineNo += 10;
+
+				    if(imp.getC_BPartner_ID() > 0)
+				        line.setC_BPartner_ID(imp.getC_BPartner_ID());
+				    if(imp.getM_Product_ID() > 0) {
+				        line.setM_Product_ID(imp.getM_Product_ID());
+				        line.setC_UOM_ID(imp.getC_UOM_ID() > 0 ? imp.getC_UOM_ID() : imp.getM_Product().getC_UOM_ID());
+				    }
+				    if(imp.getC_Charge_ID() > 0)
+				        line.setC_Charge_ID(imp.getC_Charge_ID());
+				    
+				    if(imp.get_ValueAsInt("PurchasingGroup_ID") > 0)
+				    	line.set_ValueOfColumn("PurchasingGroup_ID", imp.get_ValueAsInt("PurchasingGroup_ID"));
+
+				    line.setQty(imp.getQty());
+				    line.setPriceActual(imp.getPriceActual());
+				    line.setDescription(imp.getLineDescription());
+				    line.set_ValueOfColumn("IsExpenseDistributive", isExpenseDistributiveFromImp);
+
+				    // Datos de referencia
+				    if(imp.getC_Project_ID() > 0) line.set_ValueOfColumn("C_Project_ID", imp.getC_Project_ID());
+				    if(imp.getC_Campaign_ID() > 0) line.set_ValueOfColumn("C_Campaign_ID", imp.getC_Campaign_ID());
+				    if(imp.getC_Activity_ID() > 0) line.set_ValueOfColumn("C_Activity_ID", imp.getC_Activity_ID());
+				    if(imp.getUser1_ID() > 0) line.set_ValueOfColumn("User1_ID", imp.getUser1_ID());
+
+				    line.saveEx(get_TrxName());
+
+				    // Guardar variables "viejas"
+				    oldRequisition_ID = imp.getM_Requisition_ID();
+				    oldProduct_ID = imp.getM_Product_ID();
+				    oldCharge_ID = imp.getC_Charge_ID();
+				    oldQty_ID = imp.getQty();
+				    OldIsExpenseDistributive = isExpenseDistributiveFromImp;
+				    oldRequisitionLine_ID = line.getM_RequisitionLine_ID();
 				}
-				//	Validate Charge
-				if(imp.getC_Charge_ID() > 0)
-					line.setC_Charge_ID(imp.getC_Charge_ID());
+
+				// Ya sea nueva o existente, usamos la última línea guardada
+				imp.setM_RequisitionLine_ID(oldRequisitionLine_ID);
+
+				// --- Crear X_FTU_RLD para esa línea (aunque sea la misma) ---
+				if (isExpenseDistributiveFromImp != null && isExpenseDistributiveFromImp) {
+				    X_FTU_RLD rld = new X_FTU_RLD(getCtx(), 0, get_TrxName());
+				    rld.setM_RequisitionLine_ID(oldRequisitionLine_ID);
+				    if(imp.get_ValueAsInt("UserLine1_ID") > 0)
+				        rld.setUserLine1_ID(imp.get_ValueAsInt("UserLine1_ID"));
+				    if(imp.get_Value("Account_ID") != null)
+				        rld.setAccount_ID(imp.get_ValueAsInt("Account_ID"));
+				    if(imp.get_Value("Amount") != null)
+				        rld.setAmount((BigDecimal) imp.get_Value("Amount"));
+				    if(imp.get_Value("Description_Line") != null)
+				        rld.setDescription_Line(imp.get_ValueAsString("Description_Line"));
+
+				    rld.saveEx();
+				}
 				
-				line.setQty(imp.getQty());
-				line.setPriceActual(imp.getPriceActual());
-				line.setDescription(imp.getLineDescription());
-				//	Set Reference Data
-				if(imp.getC_Project_ID() > 0)
-					line.set_ValueOfColumn("C_Project_ID", imp.getC_Project_ID());
-				if(imp.getC_Campaign_ID() > 0)
-					line.set_ValueOfColumn("C_Campaign_ID", imp.getC_Campaign_ID());
-				if(imp.getC_Activity_ID() > 0)
-					line.set_ValueOfColumn("C_Activity_ID", imp.getC_Activity_ID());
-				if(imp.getUser1_ID() > 0)
-					line.set_ValueOfColumn("User1_ID", imp.getUser1_ID());
-				//	Save Line
-				line.saveEx(get_TrxName());
-				//	Update Import Requisition Line ID
-				imp.setM_RequisitionLine_ID(line.getM_RequisitionLine_ID());
 				//	Update Import Row
 				imp.setI_IsImported(true);
 				imp.setProcessed(true);
@@ -509,15 +578,11 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 					req.setDocAction(m_docAction);
 					if(!req.processIt (m_docAction)) {
 						log.warning("Order Process Failed: " + req + " - " + req.getProcessMsg());
-						throw new IllegalStateException("Order Process Failed: " + req + " - " + req.getProcessMsg());	
+						throw new AdempiereException("Order Process Failed: " + req + " - " + req.getProcessMsg());	
 					}
 				}
 				req.saveEx();
 			}
-		}
-		catch (Exception e)
-		{
-			log.log(Level.SEVERE, "Order - " + sql.toString(), e);
 		}
 		finally
 		{

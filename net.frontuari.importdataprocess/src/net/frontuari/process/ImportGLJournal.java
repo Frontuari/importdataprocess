@@ -489,6 +489,17 @@ public class ImportGLJournal extends CustomProcess
 			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Account from Value=" + no);
+		//	Set Account by Acct Indicator
+		sql = new StringBuilder ("UPDATE I_GLJournal i ")
+			.append("SET Account_ID=(SELECT MAX(ev.C_ElementValue_ID) FROM C_ElementValue ev")
+			.append(" INNER JOIN C_Element e ON (e.C_Element_ID=ev.C_Element_ID)")
+			.append(" INNER JOIN C_AcctSchema_Element ase ON (e.C_Element_ID=ase.C_Element_ID AND ase.ElementType='AC')")
+			.append(" WHERE ev.AcctIndicator=i.AcctIndicator AND ev.IsSummary='N'")
+			.append(" AND i.C_AcctSchema_ID=ase.C_AcctSchema_ID AND i.AD_Client_ID=ev.AD_Client_ID) ")
+			.append("WHERE Account_ID IS NULL AND AccountValue IS NULL AND AcctIndicator IS NOT NULL ")
+			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Account from Value=" + no);
 		sql = new StringBuilder ("UPDATE I_GLJournal i ")
 			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Account, '")
 			.append("WHERE (Account_ID IS NULL OR Account_ID=0)")
