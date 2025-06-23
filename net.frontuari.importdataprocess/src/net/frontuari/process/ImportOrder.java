@@ -17,10 +17,13 @@
 package net.frontuari.process;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.logging.Level;
 
 import org.adempiere.base.annotation.Process;
@@ -39,6 +42,8 @@ import org.compiere.util.Env;
 
 import net.frontuari.base.CustomProcess;
 import net.frontuari.custom.model.FTUMOrderLine;
+import net.frontuari.model.X_FTU_OLD;
+import net.frontuari.model.X_FTU_RLD;
 
 
 /**
@@ -528,6 +533,25 @@ public class ImportOrder extends CustomProcess
 		if (no != 0)
 			log.warning ("Invalid Product=" + no);
 
+		sql = new StringBuilder ("UPDATE I_Order o ")
+				.append("SET UserLine1_ID=(SELECT ev.c_elementvalue_id FROM AD_Tree tree ")
+				.append("join C_Element e on tree.AD_Tree_ID = e.AD_Tree_ID ")
+				.append("join C_ElementValue ev on ev.c_element_id = e.c_element_id ")
+				.append(" WHERE o.UserLine1Value=ev.value AND o.AD_Client_ID=tree.AD_Client_ID AND tree.TreeType = 'U1' AND e.ElementType = 'U') ")
+				.append("WHERE UserLine1_ID IS NULL AND UserLine1Value IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set UserLine1_ID from UserLine1Value=" + no);
+		
+		sql = new StringBuilder ("UPDATE I_Order o ")
+				.append("SET Account_ID=(SELECT ev.c_elementvalue_id FROM AD_Tree tree ")
+				.append("join C_Element e on tree.AD_Tree_ID = e.AD_Tree_ID ")
+				.append("join C_ElementValue ev on ev.c_element_id = e.c_element_id ")
+				.append(" WHERE o.AccountValue=ev.value AND o.AD_Client_ID=tree.AD_Client_ID AND tree.TreeType = 'EV' AND e.ElementType = 'A') ")
+				.append("WHERE Account_ID IS NULL AND AccountValue IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Account_ID from AccountValue=" + no);
 		//	Charge
 		sql = new StringBuilder ("UPDATE I_Order o ")
 			  .append("SET C_Charge_ID=(SELECT C_Charge_ID FROM C_Charge c")
@@ -817,6 +841,8 @@ public class ImportOrder extends CustomProcess
 		    MOrder order = null;
 		    int lineNo = 0;
 		    int currentLineCount = 0;
+		    
+		    Map<String, FTUMOrderLine> lineMap = new HashMap<>();
 
 		    while (rs.next()) {
 		        X_I_Order imp = new X_I_Order(getCtx(), rs, get_TrxName());
@@ -897,87 +923,101 @@ public class ImportOrder extends CustomProcess
 		        }
 
 		        imp.setC_Order_ID(order.getC_Order_ID());
-		        FTUMOrderLine line = new FTUMOrderLine(order);
-		        line.setLine(lineNo);
-		        lineNo += 10;
-		        currentLineCount++;
-
-		        if (imp.getM_Product_ID() != 0) {
-		            line.setM_Product_ID(imp.getM_Product_ID());
-		            line.setC_UOM_ID(imp.getC_UOM_ID());
+		        
+		        BigDecimal priceList = BigDecimal.ZERO;
+		        if (imp.get_Value("PriceList") != null) {
+		            priceList = new BigDecimal(imp.get_Value("PriceList").toString());
 		        }
-		   
-		        
-		        if (imp.getC_Charge_ID() != 0)
-					line.setC_Charge_ID(imp.getC_Charge_ID());
-				line.setQty(imp.getQtyOrdered());
 
-				
-		        BigDecimal priceList = null;
-		        if(imp.get_Value("PriceList") != null) {
-		        	priceList = new BigDecimal(imp.get_Value("PriceList").toString());
-		        	line.setPriceList(priceList);
-		        }else {
-		        	priceList = new BigDecimal(0);		        
-		        }
-		        
-		        
 		        BigDecimal discountObj = BigDecimal.ZERO;
 		        if (order.isSOTrx()) {
 		            MBPartner bpartner = new MBPartner(getCtx(), imp.getC_BPartner_ID(), get_TrxName());
-		            discountObj = new BigDecimal(bpartner.get_Value("FlatDiscount").toString());
+		            if (bpartner.get_Value("FlatDiscount") != null)
+		                discountObj = new BigDecimal(bpartner.get_Value("FlatDiscount").toString());
 		            imp.set_ValueOfColumn("Discount", discountObj);
-		            line.set_ValueOfColumn("Discount", discountObj);
 		        }
-		        
-		        
+
 		        BigDecimal addDiscount = BigDecimal.ZERO;
 		        if (order.isSOTrx() && imp.get_Value("Add_Discount") != null) {
 		            addDiscount = new BigDecimal(imp.get_Value("Add_Discount").toString());
-		            line.set_ValueOfColumn("Add_Discount", addDiscount);
+		            imp.set_ValueOfColumn("Add_Discount", addDiscount);
 		        }
 
-		        BigDecimal priceEntered = priceList;
-		        BigDecimal finalPrice = priceEntered.subtract(priceEntered.multiply(discountObj).divide(new BigDecimal(100)));
-		        finalPrice = finalPrice.subtract(finalPrice.multiply(addDiscount).divide(new BigDecimal(100)));
-		        line.setPriceEntered(finalPrice);
-		        line.setPriceActual(finalPrice);
+		        // Calculamos el precio final aplicando descuentos
+		        BigDecimal finalPrice = priceList
+		                .subtract(priceList.multiply(discountObj).divide(new BigDecimal(100), 2, RoundingMode.HALF_UP))
+		                .subtract(priceList.multiply(addDiscount).divide(new BigDecimal(100), 2, RoundingMode.HALF_UP));
 
-		        if (imp.getC_Tax_ID() != 0) {
-		            line.setC_Tax_ID(imp.getC_Tax_ID());
+		        // Crear clave para agrupamiento de líneas
+		        String lineKey = imp.getM_Product_ID() + "-" + imp.getQtyOrdered()
+		                + "-" + imp.getC_UOM_ID() + "-" + finalPrice;
+
+		        FTUMOrderLine line;
+		        if (!lineMap.containsKey(lineKey)) {
+		            line = new FTUMOrderLine(order);
+		            line.setLine(lineNo);
+		            lineNo += 10;
+
+		            if (imp.getM_Product_ID() != 0) {
+		                line.setM_Product_ID(imp.getM_Product_ID());
+		                line.setC_UOM_ID(imp.getC_UOM_ID());
+		            }
+
+		            if (imp.getC_Charge_ID() != 0) {
+		                line.setC_Charge_ID(imp.getC_Charge_ID());
+		            }
+
+		            line.setQty(imp.getQtyOrdered());
+		            line.setPriceList(priceList);
+		            line.setPriceEntered(finalPrice);
+		            line.setPriceActual(finalPrice);
+
+		            if (imp.getC_Tax_ID() != 0) {
+		                line.setC_Tax_ID(imp.getC_Tax_ID());
+		            } else {
+		                line.setTax();
+		                imp.setC_Tax_ID(line.getC_Tax_ID());
+		            }
+
+		            line.saveEx();
+		            lineMap.put(lineKey, line);
+		            noInsertLine++;
 		        } else {
-		            line.setTax();
-		            imp.setC_Tax_ID(line.getC_Tax_ID());
+		            line = lineMap.get(lineKey);
 		        }
-		        BigDecimal pkgUnit = BigDecimal.ZERO;
 
-		        if (line.getM_Product_ID() > 0) {
-		            MProduct product = new MProduct(getCtx(), line.getM_Product_ID(), get_TrxName());
-		            Object pkgUnitObj = product.get_Value("PkgUnit");
-		            if (pkgUnitObj != null) {
-		                pkgUnit = new BigDecimal(pkgUnitObj.toString());
-		                line.set_ValueOfColumn("PkgUnit", pkgUnit);
+		        // Crear X_FTU_OLD si aplica
+		        if (!imp.isSOTrx()) {
+		            Boolean isExpenseDistributiveFromImp = imp.get_ValueAsBoolean("IsExpenseDistributive");
+		            line.set_ValueOfColumn("IsExpenseDistributive", isExpenseDistributiveFromImp);
+		            line.saveEx();
+
+		            if (Boolean.TRUE.equals(isExpenseDistributiveFromImp)) {
+		                X_FTU_OLD rld = new X_FTU_OLD(getCtx(), 0, get_TrxName());
+		                rld.setC_OrderLine_ID(line.getC_OrderLine_ID());
+
+		                if (imp.get_ValueAsInt("UserLine1_ID") > 0)
+		                    rld.setUserLine1_ID(imp.get_ValueAsInt("UserLine1_ID"));
+
+		                if (imp.get_Value("Account_ID") != null)
+		                    rld.setAccount_ID(imp.get_ValueAsInt("Account_ID"));
+
+		                if (imp.get_Value("Amount") != null)
+		                    rld.setAmount((BigDecimal) imp.get_Value("Amount"));
+
+		                if (imp.get_Value("Description_Line") != null)
+		                    rld.setDescription_Line(imp.get_ValueAsString("Description_Line"));
+
+		                rld.saveEx();
 		            }
 		        }
 
-
-		        try {
-		            line.saveEx();
-		            imp.setC_OrderLine_ID(line.getC_OrderLine_ID());
-		            imp.setI_IsImported(true);
-		            imp.setProcessed(true);
-		            imp.setI_ErrorMsg(null);
-		            if (imp.save()) noInsertLine++;
-		        } catch (Exception e) {
-		            String errorMessage = e.getMessage();
-		            if (errorMessage != null && errorMessage.length() > 255)
-		                errorMessage = errorMessage.substring(0, 255);
-		            imp.setI_IsImported(false);
-		            imp.setProcessed(false);
-		            imp.setI_ErrorMsg("Error al guardar línea: " + errorMessage);
-		            imp.saveEx();
-		            continue;
-		        }
+		        // Marcar imp como procesado
+		        imp.setC_OrderLine_ID(line.getC_OrderLine_ID());
+		        imp.setI_IsImported(true);
+		        imp.setProcessed(true);
+		        imp.setI_ErrorMsg(null);
+		        imp.saveEx();
 		    }
 
 		    if (order != null) {
@@ -990,8 +1030,6 @@ public class ImportOrder extends CustomProcess
 		        }
 		        order.saveEx();
 		    }
-		} catch (Exception e) {
-		    log.log(Level.SEVERE, "Order - " + sql.toString(), e);
 		} finally {
 		    DB.close(rs, pstmt);
 		    rs = null;

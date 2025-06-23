@@ -47,6 +47,7 @@ import org.compiere.util.Msg;
 import org.eevolution.model.X_I_Movement;
 
 import net.frontuari.base.CustomProcess;
+import net.frontuari.custom.model.FTUMMovement;
 
 /**
  *	Import Inventory Movement from I_M_Movemen
@@ -213,7 +214,7 @@ public class ImportInventoryMove extends CustomProcess {
 		for(String idx : idsPr)
 		{
 			int id = Integer.parseInt(idx);
-			MMovement move = new MMovement(Env.getCtx(), id, get_TrxName());
+			FTUMMovement move = new FTUMMovement(Env.getCtx(), id, get_TrxName());
 			move.processIt(m_docAction);
 			move.saveEx();
 		}
@@ -361,11 +362,11 @@ public class ImportInventoryMove extends CustomProcess {
 				)
 				.firstId();
 
-		MMovement move = null;
+		FTUMMovement move = null;
 		if (oldID <= 0)
 			oldID = 0;
 
-		move = new MMovement(Env.getCtx(), oldID, get_TrxName());
+		move = new FTUMMovement(Env.getCtx(), oldID, get_TrxName());
 
 		try {
 			if (imove.getDocumentNo() != null && imove.getDocumentNo().length() > 0) {
