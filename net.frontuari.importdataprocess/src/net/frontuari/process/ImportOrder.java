@@ -961,6 +961,13 @@ public class ImportOrder extends CustomProcess
 		            if (imp.getM_Product_ID() != 0) {
 		                line.setM_Product_ID(imp.getM_Product_ID());
 		                line.setC_UOM_ID(imp.getC_UOM_ID());
+		                BigDecimal pkgUnit = BigDecimal.ZERO;
+		                MProduct product = new MProduct(getCtx(), line.getM_Product_ID(), get_TrxName());
+			            Object pkgUnitObj = product.get_Value("PkgUnit");
+			            if (pkgUnitObj != null) {
+			                pkgUnit = new BigDecimal(pkgUnitObj.toString());
+			                line.set_ValueOfColumn("PkgUnit", pkgUnit);
+			            }
 		            }
 
 		            if (imp.getC_Charge_ID() != 0) {
@@ -971,6 +978,9 @@ public class ImportOrder extends CustomProcess
 		            line.setPriceList(priceList);
 		            line.setPriceEntered(finalPrice);
 		            line.setPriceActual(finalPrice);
+		            
+		            line.set_ValueOfColumn("Discount", discountObj);
+		            line.set_ValueOfColumn("Add_Discount", addDiscount);
 
 		            if (imp.getC_Tax_ID() != 0) {
 		                line.setC_Tax_ID(imp.getC_Tax_ID());
