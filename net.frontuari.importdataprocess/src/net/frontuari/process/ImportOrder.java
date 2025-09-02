@@ -967,6 +967,7 @@ public class ImportOrder extends CustomProcess
 			            if (pkgUnitObj != null) {
 			                pkgUnit = new BigDecimal(pkgUnitObj.toString());
 			                line.set_ValueOfColumn("PkgUnit", pkgUnit);
+							imp.set_ValueOfColumn("PkgUnit", pkgUnit);
 			            }
 		            }
 

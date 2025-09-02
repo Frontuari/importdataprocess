@@ -207,7 +207,7 @@ public class ImportGLJournal extends CustomProcess
 
 				        imp.saveEx();
 
-				        log.warning("Registro ID=" + recordID + " importado correctamente: Org=" + OrgValue + " Account=" + accountNo + " Amt=" + Amt);
+				        log.warning("Registro ID=" + recordID + " importado correctamente: Org=" + OrgValue + " Account=" + accountNo + " Amt=" + Amt + "trxType = "+trxType);
 
 				    } catch (Exception e) {
 				        // Capturamos cualquier excepción y la asociamos al registro que falló
