@@ -126,73 +126,105 @@ public class ImportGLJournal extends CustomProcess
 
 		X_I_GLJournal test = new X_I_GLJournal(getCtx(),getRecord_ID(),get_TrxName());
 		
-		if (test.get_ColumnIndex("SPIFileContent")>0) {
-				PreparedStatement pstmtValidate = null;
-				ResultSet rsValidate = null;
-				sql = new StringBuilder ("SELECT * FROM I_GLJournal ")
-						.append("WHERE SPIFileContent IS NOT NULL AND I_IsImported='N'").append (clientCheck)
-						.append(" ORDER BY AD_Org_ID,TRUNC(DateAcct),COALESCE(BatchDocumentNo, I_GLJournal_ID::varchar), COALESCE(JournalDocumentNo, ")
-								.append("I_GLJournal_ID::varchar),	 C_AcctSchema_ID, PostingType, C_DocType_ID, GL_Category_ID, ")
-								.append("C_Currency_ID, Line, I_GLJournal_ID");
-					try
-					{
-						pstmtValidate = DB.prepareStatement (sql.toString (), get_TrxName());
-						rsValidate = pstmtValidate.executeQuery ();
-						//
-						while (rsValidate.next())
-						{
-							X_I_GLJournal imp = new X_I_GLJournal (getCtx (), rsValidate, get_TrxName());
-		
-							String content = imp.get_ValueAsString("SPIFileContent");
-							String OrgValue = content.substring(0, 4);
-							String date = content.substring(47,55);
-							String accountNo = content.substring(55,59);
-							String User1 = content.substring(60,64);
-							String amt = content.substring(109,126);
-							String Description = content.substring(126,155);
-							String trxType = content.substring(155,156);
-							
-							amt = amt.replace(" ", "");
-							amt = amt.replace("-", "");
-							
-							//format amt 
-							String number = amt.substring(0,amt.length()-2);
-							String decimals = amt.substring(amt.length() - 2, amt.length());
-							amt = number + "." + decimals;
-							//we format date first 
-							date = date.substring(0,2) + "/" + date.substring(2,4) + "/" + date.substring(4,8)+ " 00:00:00";
-							DateTimeFormatter formatDateTime = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
-					        LocalDateTime localDateTime = LocalDateTime.from(formatDateTime.parse(date));
-					        Timestamp ts = Timestamp.valueOf(localDateTime);
-							//set values
-					        imp.setDateAcct(ts);
-							imp.setOrgValue(OrgValue);
-							imp.setOrgTrxValue(OrgValue);
-							imp.setAccountValue(accountNo);
-							imp.set_ValueOfColumn("User1Value", User1);
-							imp.setDescription(Description);
-							BigDecimal Amt = new BigDecimal (amt);
-							if (trxType.equalsIgnoreCase("1")) {
-							imp.setAmtAcctDr(Amt);
-							imp.setAmtSourceDr(Amt);
-							}else {
-							imp.setAmtAcctCr(Amt);
-							imp.setAmtSourceCr(Amt);	
-							}
-							//imp.setDateAcct(m_DateAcct);
-							imp.saveEx();
-						}
-						
-					}catch (SQLException ex)
-					{
-						log.log(Level.SEVERE, sql.toString(), ex);
-					}
-					finally
-					{
-						DB.close(rsValidate, pstmtValidate);
-						rsValidate = null;
-						pstmtValidate = null;
+		if (test.get_ColumnIndex("SPIFileContent") > 0) {
+			PreparedStatement pstmtValidate = null;
+			ResultSet rsValidate = null;
+			sql = new StringBuilder("SELECT * FROM I_GLJournal ")
+					.append("WHERE SPIFileContent IS NOT NULL AND I_IsImported <>'Y'").append(clientCheck)
+					.append(" ORDER BY AD_Org_ID,TRUNC(DateAcct),COALESCE(BatchDocumentNo, I_GLJournal_ID::varchar), COALESCE(JournalDocumentNo, ")
+					.append("I_GLJournal_ID::varchar),	 C_AcctSchema_ID, PostingType, C_DocType_ID, GL_Category_ID, ")
+					.append("C_Currency_ID, Line, I_GLJournal_ID");
+			try {
+				pstmtValidate = DB.prepareStatement(sql.toString(), get_TrxName());
+				rsValidate = pstmtValidate.executeQuery();
+				//
+				while (rsValidate.next()) {
+				    X_I_GLJournal imp = new X_I_GLJournal(getCtx(), rsValidate, get_TrxName());
+				    int recordID = imp.getI_GLJournal_ID(); // Guardamos ID para logging
+				    try {
+				        String content = imp.get_ValueAsString("SPIFileContent");
+
+				        if (content == null || content.trim().isEmpty()) {
+				            imp.setI_ErrorMsg("SPIFileContent vacío");
+				            imp.saveEx();
+				            log.warning("Registro ID=" + recordID + " falló: SPIFileContent vacío");
+				            continue;
+				        }
+
+				        String[] parts = content.trim().split("\\s+");
+
+				        if (parts.length < 10) {
+				            imp.setI_ErrorMsg("Formato inválido. Columnas=" + parts.length);
+				            imp.saveEx();
+				            log.warning("Registro ID=" + recordID + " falló: Formato inválido");
+				            continue;
+				        }
+
+				        // Mapear campos
+				        String OrgValue  = parts[0];
+				        String Period    = parts[1];
+				        String Year      = parts[2];
+				        String NM        = parts[3];
+				        String date1     = parts[4];
+				        String date2     = parts[5];
+				        String accountNo = parts[6];
+				        String trxType   = parts[7];
+				        String amt       = parts[8];
+
+				        // Descripción = todo lo que sigue hasta el último campo (user1)
+				        String user1     = parts[parts.length - 1];
+				        StringBuilder descBuilder = new StringBuilder();
+				        for (int i = 9; i < parts.length - 1; i++) {
+				            if (i > 9) descBuilder.append(" ");
+				            descBuilder.append(parts[i]);
+				        }
+				        String desc = descBuilder.toString();
+
+				        // Parseo de fecha
+				        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyyMMdd HH:mm:ss");
+				        LocalDateTime localDateTime = LocalDateTime.from(dtf.parse(date1 + " 00:00:00"));
+				        Timestamp ts = Timestamp.valueOf(localDateTime);
+
+				        // Parseo de monto con limpieza
+				        amt = amt.replace(".", "").replace(",", ".");
+				        BigDecimal Amt = new BigDecimal(amt);
+
+				        // Seteo de campos
+				        imp.setDateAcct(ts);
+				        imp.setOrgValue(OrgValue);
+				        imp.setOrgTrxValue(OrgValue);
+				        imp.setAccountValue(accountNo);
+				        imp.set_ValueOfColumn("User1Value", user1);
+				        imp.setDescription(desc);
+
+				        if (trxType.equals("1")) {
+				            imp.setAmtAcctDr(Amt);
+				            imp.setAmtSourceDr(Amt);
+				        } else {
+				            imp.setAmtAcctCr(Amt);
+				            imp.setAmtSourceCr(Amt);
+				        }
+
+				        imp.saveEx();
+
+				        log.warning("Registro ID=" + recordID + " importado correctamente: Org=" + OrgValue + " Account=" + accountNo + " Amt=" + Amt);
+
+				    } catch (Exception e) {
+				        // Capturamos cualquier excepción y la asociamos al registro que falló
+				        imp.setI_ErrorMsg("Error al importar: " + e.getMessage());
+				        imp.saveEx();
+				        log.warning("Registro ID=" + recordID + " causó error: " + e.toString());
+				    }
 				}
+
+
+			} catch (SQLException ex) {
+				log.log(Level.SEVERE, sql.toString(), ex);
+			} finally {
+				DB.close(rsValidate, pstmtValidate);
+				rsValidate = null;
+				pstmtValidate = null;
+			}
 		}
 		
 		test = null;
@@ -745,7 +777,7 @@ public class ImportGLJournal extends CustomProcess
 
 
 		//	Get Balance
-		sql = new StringBuilder ("SELECT SUM(AmtSourceDr)-SUM(AmtSourceCr), SUM(AmtAcctDr)-SUM(AmtAcctCr) ")
+		sql = new StringBuilder ("SELECT ROUND(SUM(AmtSourceDr)-SUM(AmtSourceCr),4), ROUND(SUM(AmtAcctDr)-SUM(AmtAcctCr),4) ")
 			.append("FROM I_GLJournal ")
 			.append("WHERE I_IsImported='N'").append (clientCheck);
 		PreparedStatement pstmt = null;
