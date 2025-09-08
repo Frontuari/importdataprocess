@@ -159,7 +159,7 @@ public class ImportGLJournal extends CustomProcess
                     String date = content_length >= dateEnd ? content.substring(dateStart, dateEnd).trim() : "";
                     
                     // Columna 7: 11 caracteres
-                    int accountNoStart = dateEnd;
+                    int accountNoStart = dateEnd;	
                     int accountNoEnd = accountNoStart + 11;
                     String accountNo = content_length >= accountNoEnd ? content.substring(accountNoStart, accountNoEnd).trim() : "";
                     
@@ -198,9 +198,7 @@ public class ImportGLJournal extends CustomProcess
                     amt = amt.replace(" ", "").replace(",", ".");
                     
                     // Formatear la fecha
-                    DateTimeFormatter formatDateTime = DateTimeFormatter.ofPattern("yyyyMMdd");
-                    LocalDateTime localDateTime = LocalDateTime.from(formatDateTime.parse(date));
-                    Timestamp ts = Timestamp.valueOf(localDateTime.atStartOfDay());
+                    Timestamp ts = Timestamp.valueOf(LocalDateTime.now());
                     
                     // set values
                     imp.setDateAcct(ts);
@@ -253,62 +251,32 @@ public class ImportGLJournal extends CustomProcess
                     String content = imp.get_ValueAsString("SPIFileContent");
                     int content_length = content.length();
                     
-                    // Definir las posiciones de inicio y fin de los campos de manera más segura
-                    // Aquí establecemos las posiciones fijas basadas en tu archivo de datos,
-                    // pero las ajustamos para que no fallen si la línea es más corta.
+                    String OrgValue = content.substring(0, 5).trim();
+                    String date = content.substring(26, 35).trim();
+                    String accountNo = content.substring(35, 46).trim();
+                    String TrxType = content.substring(54, 58).trim();
                     
-                    // Columna 1: 5 caracteres
-                    String OrgValue = content_length >= 5 ? content.substring(0, 5).trim() : "";
+                    // La posición del campo numérico ahora es correcta, después de TrxType.
+                    int amtStart = 58;
+                    int amtEnd = 68;
+                    String amt = content.substring(amtStart, amtEnd).trim();
                     
-                    // Columna 2 a 6: (4 + 5 + 3 + 9 + 9) = 30 caracteres
-                    // La fecha está en la posición 27
-                    int dateStart = 26;
-                    int dateEnd = dateStart + 9;
-                    String date = content_length >= dateEnd ? content.substring(dateStart, dateEnd).trim() : "";
-                    
-                    // Columna 7: 11 caracteres
-                    int accountNoStart = dateEnd;
-                    int accountNoEnd = accountNoStart + 11;
-                    String accountNo = content_length >= accountNoEnd ? content.substring(accountNoStart, accountNoEnd).trim() : "";
-                    
-                    // Columna 8 a 10: (4 + 4 + 4) = 12 caracteres
-                    int trxTypeStart = accountNoEnd + 12; // Esto se alinea con la posición que mencionaste
-                    int trxTypeEnd = trxTypeStart + 4;
-                    String TrxType = content_length >= trxTypeEnd ? content.substring(trxTypeStart, trxTypeEnd).trim() : "";
-                    
-                    // Columna 11: 10 caracteres
-                    int amtStart = trxTypeEnd;
-                    int amtEnd = amtStart + 10;
-                    String amt = content_length >= amtEnd ? content.substring(amtStart, amtEnd).trim() : "";
-                    
-                    // Columna 12: 30 caracteres
                     int descriptionStart = amtEnd;
-                    int descriptionEnd = descriptionStart + 30;
-                    String Description = content_length >= descriptionEnd ? content.substring(descriptionStart, descriptionEnd).trim() : "";
+                    int descriptionEnd = descriptionStart + 30; // 30 caracteres para la descripción
+                    String Description = content.substring(descriptionStart, descriptionEnd).trim();
                     
-                    // Columna 13: 13 caracteres
                     int user1Start = descriptionEnd;
-                    int user1End = user1Start + 13;
-                    String User1 = content_length >= user1End ? content.substring(user1Start, user1End).trim() : "";
+                    int user1End = user1Start + 13; // 13 caracteres para User1
+                    String User1 = content.substring(user1Start, user1End).trim();
                     
-                    // Columna 14 a 16: (4 + 4 + 4) = 12 caracteres
-                    int currencyStart = user1End + 8;
-                    int currencyEnd = currencyStart + 4;
-                    String currency = content_length >= currencyEnd ? content.substring(currencyStart, currencyEnd).trim() : "";
-
-                    // Aclaración: la transacción (debe/haber) está en la posición 55 del string
-                    // y el valor es '1' o '2'. Es un campo de 4 caracteres.
-                    // Tu ejemplo muestra '1' pero el código anterior usaba trxType de la posición 155, 
-                    // lo cual parece un error. Asumo que el valor '1' es para DR y '2' para CR.
+                    int currencyStart = user1End + 8; // La moneda está después de un espacio de 8 caracteres
+                    int currencyEnd = currencyStart + 4; // 4 caracteres para la moneda
+                    String currency = content.substring(currencyStart, currencyEnd).trim();
                     
-                    // También, el campo numérico puede tener comas y puntos. El script de Python lo limpia,
-                    // pero es una buena práctica manejarlo aquí también en caso de que no esté preformateado.
                     amt = amt.replace(" ", "").replace(",", ".");
                     
                     // Formatear la fecha
-                    DateTimeFormatter formatDateTime = DateTimeFormatter.ofPattern("yyyyMMdd");
-                    LocalDateTime localDateTime = LocalDateTime.from(formatDateTime.parse(date));
-                    Timestamp ts = Timestamp.valueOf(localDateTime.atStartOfDay());
+                    Timestamp ts = Timestamp.valueOf(LocalDateTime.now());
                     
                     // set values
                     imp.setDateAcct(ts);
