@@ -126,7 +126,7 @@ public class ImportGLJournal extends CustomProcess
 
 		X_I_GLJournal test = new X_I_GLJournal(getCtx(),getRecord_ID(),get_TrxName());
 		
-                     if (test.get_ColumnIndex("SPIFileContent")>0) {
+if (test.get_ColumnIndex("SPIFileContent")>0) {
             PreparedStatement pstmtValidate = null;
             ResultSet rsValidate = null;
             sql = new StringBuilder ("SELECT * FROM I_GLJournal ")
@@ -142,180 +142,74 @@ public class ImportGLJournal extends CustomProcess
                 while (rsValidate.next())
                 {
                     X_I_GLJournal imp = new X_I_GLJournal (getCtx (), rsValidate, get_TrxName());
-                    String content = imp.get_ValueAsString("SPIFileContent");
-                    int content_length = content.length();
-                    
-                    // Definir las posiciones de inicio y fin de los campos de manera más segura
-                    // Aquí establecemos las posiciones fijas basadas en tu archivo de datos,
-                    // pero las ajustamos para que no fallen si la línea es más corta.
-                    
-                    // Columna 1: 5 caracteres
-                    String OrgValue = content_length >= 5 ? content.substring(0, 5).trim() : "";
-                    
-                    // Columna 2 a 6: (4 + 5 + 3 + 9 + 9) = 30 caracteres
-                    // La fecha está en la posición 27
-                    int dateStart = 26;
-                    int dateEnd = dateStart + 9;
-                    String date = content_length >= dateEnd ? content.substring(dateStart, dateEnd).trim() : "";
-                    
-                    // Columna 7: 11 caracteres
-                    int accountNoStart = dateEnd;	
-                    int accountNoEnd = accountNoStart + 11;
-                    String accountNo = content_length >= accountNoEnd ? content.substring(accountNoStart, accountNoEnd).trim() : "";
-                    
-                    // Columna 8 a 10: (4 + 4 + 4) = 12 caracteres
-                    int trxTypeStart = accountNoEnd + 12; // Esto se alinea con la posición que mencionaste
-                    int trxTypeEnd = trxTypeStart + 4;
-                    String TrxType = content_length >= trxTypeEnd ? content.substring(trxTypeStart, trxTypeEnd).trim() : "";
-                    
-                    // Columna 11: 10 caracteres
-                    int amtStart = trxTypeEnd;
-                    int amtEnd = amtStart + 10;
-                    String amt = content_length >= amtEnd ? content.substring(amtStart, amtEnd).trim() : "";
-                    
-                    // Columna 12: 30 caracteres
-                    int descriptionStart = amtEnd;
-                    int descriptionEnd = descriptionStart + 30;
-                    String Description = content_length >= descriptionEnd ? content.substring(descriptionStart, descriptionEnd).trim() : "";
-                    
-                    // Columna 13: 13 caracteres
-                    int user1Start = descriptionEnd;
-                    int user1End = user1Start + 13;
-                    String User1 = content_length >= user1End ? content.substring(user1Start, user1End).trim() : "";
-                    
-                    // Columna 14 a 16: (4 + 4 + 4) = 12 caracteres
-                    int currencyStart = user1End + 8;
-                    int currencyEnd = currencyStart + 4;
-                    String currency = content_length >= currencyEnd ? content.substring(currencyStart, currencyEnd).trim() : "";
+                    String content = imp.get_ValueAsString("SPIFileContent").trim();
+                    String[] parts = content.split("\\s+");
 
-                    // Aclaración: la transacción (debe/haber) está en la posición 55 del string
-                    // y el valor es '1' o '2'. Es un campo de 4 caracteres.
-                    // Tu ejemplo muestra '1' pero el código anterior usaba trxType de la posición 155, 
-                    // lo cual parece un error. Asumo que el valor '1' es para DR y '2' para CR.
-                    
-                    // También, el campo numérico puede tener comas y puntos. El script de Python lo limpia,
-                    // pero es una buena práctica manejarlo aquí también en caso de que no esté preformateado.
-                    amt = amt.replace(" ", "").replace(",", ".");
-                    
-                    // Formatear la fecha
-                    Timestamp ts = Timestamp.valueOf(LocalDateTime.now());
-                    
+                    // Validar que hay suficientes partes (mínimo 9 para los campos básicos)
+                    if (parts.length < 9) continue;
+
+                    // Asignar campos básicos
+                    String OrgValue = parts[0];
+                    String accountNo = parts[6];
+                    String trxType = parts[7];
+                    String amt = parts[8].replace(",", "."); // monto
+
+                    // Buscar centro de costo (último campo si la línea tiene más de 10 partes)
+                    String centroCosto = "";
+                    if (parts.length > 10) {
+                        centroCosto = parts[parts.length - 1];
+                    }
+
+                    // La descripción puede tener espacios, así que la reconstruimos
+                    StringBuilder descBuilder = new StringBuilder();
+                    for (int i = 9; i < (centroCosto.isEmpty() ? parts.length : parts.length - 1); i++) {
+                        descBuilder.append(parts[i]);
+                        if (i < (centroCosto.isEmpty() ? parts.length - 1 : parts.length - 2)) descBuilder.append(" ");
+                    }
+                    String Description = descBuilder.toString().trim();
+
+                    // Usar la fecha actual del sistema
+                    Timestamp ts = new Timestamp(System.currentTimeMillis());
+
                     // set values
                     imp.setDateAcct(ts);
                     imp.setOrgValue(OrgValue);
                     imp.setOrgTrxValue(OrgValue);
                     imp.setAccountValue(accountNo);
-                    imp.set_ValueOfColumn("User1Value", User1);
                     imp.setDescription(Description);
 
-                    BigDecimal Amt = new BigDecimal (amt);
-                    if (TrxType.equalsIgnoreCase("1")) {
+                    // Guardar centro de costo si existe
+                    if (!centroCosto.isEmpty()) {
+                        imp.set_ValueOfColumn("User1Value", centroCosto); // Cambia "User1Value" por el nombre real de tu columna si es diferente
+                    }
+
+                    BigDecimal Amt = new BigDecimal(amt);
+                    if (trxType.equalsIgnoreCase("1")) {
                         imp.setAmtAcctDr(Amt);
                         imp.setAmtSourceDr(Amt);
                     } else {
                         imp.setAmtAcctCr(Amt);
-                        imp.setAmtSourceCr(Amt);    
+                        imp.setAmtSourceCr(Amt);
                     }
-                    
-                    imp.set_ValueOfColumn("ISO_Code", currency);
 
                     imp.saveEx();
                 }
                 
-            }catch (SQLException ex)
-            {
-                log.log(Level.SEVERE, sql.toString(), ex);
-            }
-            finally
-            {
-                DB.close(rsValidate, pstmtValidate);
-                rsValidate = null;
-                pstmtValidate = null;
-            }
-        }        if (test.get_ColumnIndex("SPIFileContent")>0) {
-            PreparedStatement pstmtValidate = null;
-            ResultSet rsValidate = null;
-            sql = new StringBuilder ("SELECT * FROM I_GLJournal ")
-                    .append("WHERE SPIFileContent IS NOT NULL AND I_IsImported='N'").append (clientCheck)
-                    .append(" ORDER BY AD_Org_ID,TRUNC(DateAcct),COALESCE(BatchDocumentNo, I_GLJournal_ID::varchar), COALESCE(JournalDocumentNo, ")
-                    .append("I_GLJournal_ID::varchar),   C_AcctSchema_ID, PostingType, C_DocType_ID, GL_Category_ID, ")
-                    .append("C_Currency_ID, Line, I_GLJournal_ID");
-            try
-            {
-                pstmtValidate = DB.prepareStatement (sql.toString (), get_TrxName());
-                rsValidate = pstmtValidate.executeQuery ();
-                //
-                while (rsValidate.next())
-                {
-                    X_I_GLJournal imp = new X_I_GLJournal (getCtx (), rsValidate, get_TrxName());
-                    String content = imp.get_ValueAsString("SPIFileContent");
-                    int content_length = content.length();
-                    
-                    String OrgValue = content.substring(0, 5).trim();
-                    String date = content.substring(26, 35).trim();
-                    String accountNo = content.substring(35, 46).trim();
-                    String TrxType = content.substring(54, 58).trim();
-                    
-                    // La posición del campo numérico ahora es correcta, después de TrxType.
-                    int amtStart = 58;
-                    int amtEnd = 68;
-                    String amt = content.substring(amtStart, amtEnd).trim();
-                    
-                    int descriptionStart = amtEnd;
-                    int descriptionEnd = descriptionStart + 30; // 30 caracteres para la descripción
-                    String Description = content.substring(descriptionStart, descriptionEnd).trim();
-                    
-                    int user1Start = descriptionEnd;
-                    int user1End = user1Start + 13; // 13 caracteres para User1
-                    String User1 = content.substring(user1Start, user1End).trim();
-                    
-                    int currencyStart = user1End + 8; // La moneda está después de un espacio de 8 caracteres
-                    int currencyEnd = currencyStart + 4; // 4 caracteres para la moneda
-                    String currency = content.substring(currencyStart, currencyEnd).trim();
-                    
-                    amt = amt.replace(" ", "").replace(",", ".");
-                    
-                    // Formatear la fecha
-                    Timestamp ts = Timestamp.valueOf(LocalDateTime.now());
-                    
-                    // set values
-                    imp.setDateAcct(ts);
-                    imp.setOrgValue(OrgValue);
-                    imp.setOrgTrxValue(OrgValue);
-                    imp.setAccountValue(accountNo);
-                    imp.set_ValueOfColumn("User1Value", User1);
-                    imp.setDescription(Description);
-
-                    BigDecimal Amt = new BigDecimal (amt);
-                    if (TrxType.equalsIgnoreCase("1")) {
-                        imp.setAmtAcctDr(Amt);
-                        imp.setAmtSourceDr(Amt);
-                    } else {
-                        imp.setAmtAcctCr(Amt);
-                        imp.setAmtSourceCr(Amt);    
-                    }
-                    
-                    imp.set_ValueOfColumn("ISO_Code", currency);
-
-                    imp.saveEx();
-                }
-                
-            }catch (SQLException ex)
-            {
-                log.log(Level.SEVERE, sql.toString(), ex);
-            }
-            finally
-            {
-                DB.close(rsValidate, pstmtValidate);
-                rsValidate = null;
-                pstmtValidate = null;
-            }
+            } catch (SQLException e)
+			{
+				log.log(Level.SEVERE, sql.toString(), e);
+				throw new Exception (e.getMessage());
+            
+        } finally {
+            DB.close(rsValidate, pstmtValidate);
+            rsValidate = null;
+            pstmtValidate = null;
         }
-		
-		test = null;
-		
-		//	Set IsActive, Created/Updated
-		sql = new StringBuilder ("UPDATE I_GLJournal ")
+
+        test = null;
+
+        //	Set IsActive, Created/Updated
+        sql = new StringBuilder ("UPDATE I_GLJournal ")
 			.append("SET IsActive = COALESCE (IsActive, 'Y'),")
 			.append(" Created = COALESCE (Created, SysDate),")
 			.append(" CreatedBy = COALESCE (CreatedBy, 0),")
