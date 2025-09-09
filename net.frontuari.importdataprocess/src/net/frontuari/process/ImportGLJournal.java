@@ -152,21 +152,32 @@ if (test.get_ColumnIndex("SPIFileContent")>0) {
                     String OrgValue = parts[0];
                     String accountNo = parts[6];
                     String trxType = parts[7];
-                    String amt = parts[8].replace(",", "."); // monto
+
+                    // Extraer monto y descripción (el monto puede estar pegado a la descripción)
+                    String montoYDescripcion = content.substring(content.indexOf(parts[8]));
+                    String regex = "^([\\d.,]+)(.*)$";
+                    java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(regex);
+                    java.util.regex.Matcher matcher = pattern.matcher(montoYDescripcion.trim());
+
+                    String amt = "";
+                    String Description = "";
+                    if (matcher.find()) {
+                        amt = matcher.group(1).replace(",", ".").trim();
+                        Description = matcher.group(2).trim();
+                    } else {
+                        amt = parts[8].replace(",", ".").trim();
+                        Description = "";
+                    }
 
                     // Buscar centro de costo (último campo si la línea tiene más de 10 partes)
                     String centroCosto = "";
                     if (parts.length > 10) {
                         centroCosto = parts[parts.length - 1];
+                        // Si el centro de costo está en la descripción, lo quitamos
+                        if (!Description.isEmpty() && Description.endsWith(centroCosto)) {
+                            Description = Description.substring(0, Description.length() - centroCosto.length()).trim();
+                        }
                     }
-
-                    // La descripción puede tener espacios, así que la reconstruimos
-                    StringBuilder descBuilder = new StringBuilder();
-                    for (int i = 9; i < (centroCosto.isEmpty() ? parts.length : parts.length - 1); i++) {
-                        descBuilder.append(parts[i]);
-                        if (i < (centroCosto.isEmpty() ? parts.length - 1 : parts.length - 2)) descBuilder.append(" ");
-                    }
-                    String Description = descBuilder.toString().trim();
 
                     // Usar la fecha actual del sistema
                     Timestamp ts = new Timestamp(System.currentTimeMillis());
@@ -183,13 +194,20 @@ if (test.get_ColumnIndex("SPIFileContent")>0) {
                         imp.set_ValueOfColumn("User1Value", centroCosto); // Cambia "User1Value" por el nombre real de tu columna si es diferente
                     }
 
-                    BigDecimal Amt = new BigDecimal(amt);
-                    if (trxType.equalsIgnoreCase("1")) {
-                        imp.setAmtAcctDr(Amt);
-                        imp.setAmtSourceDr(Amt);
-                    } else {
-                        imp.setAmtAcctCr(Amt);
-                        imp.setAmtSourceCr(Amt);
+                    try {
+                        BigDecimal Amt = new BigDecimal(amt);
+                        if (trxType.equalsIgnoreCase("1")) {
+                            imp.setAmtAcctDr(Amt);
+                            imp.setAmtSourceDr(Amt);
+                        } else {
+                            imp.setAmtAcctCr(Amt);
+                            imp.setAmtSourceCr(Amt);
+                        }
+                    } catch (NumberFormatException ex) {
+                        imp.setI_ErrorMsg("ERROR en monto: " + amt);
+                        imp.setI_IsImported(false);
+                        imp.saveEx();
+                        continue;
                     }
 
                     imp.saveEx();
@@ -205,6 +223,7 @@ if (test.get_ColumnIndex("SPIFileContent")>0) {
             rsValidate = null;
             pstmtValidate = null;
         }
+}
 
         test = null;
 
