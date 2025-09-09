@@ -169,13 +169,16 @@ if (test.get_ColumnIndex("SPIFileContent")>0) {
                         Description = "";
                     }
 
-                    // Buscar centro de costo (último campo si la línea tiene más de 10 partes)
+                    // Buscar centro de costo (último campo si la línea tiene más de 10 partes y es numérico)
                     String centroCosto = "";
                     if (parts.length > 10) {
-                        centroCosto = parts[parts.length - 1];
-                        // Si el centro de costo está en la descripción, lo quitamos
-                        if (!Description.isEmpty() && Description.endsWith(centroCosto)) {
-                            Description = Description.substring(0, Description.length() - centroCosto.length()).trim();
+                        String posibleCentroCosto = parts[parts.length - 1];
+                        if (posibleCentroCosto.matches("\\d+")) { // Solo si es numérico
+                            centroCosto = posibleCentroCosto;
+                            // Si el centro de costo está en la descripción, lo quitamos
+                            if (!Description.isEmpty() && Description.endsWith(centroCosto)) {
+                                Description = Description.substring(0, Description.length() - centroCosto.length()).trim();
+                            }
                         }
                     }
 
