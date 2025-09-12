@@ -42,8 +42,7 @@ import org.compiere.util.Env;
 
 import net.frontuari.base.CustomProcess;
 import net.frontuari.custom.model.FTUMOrderLine;
-import net.frontuari.model.X_FTU_OLD;
-import net.frontuari.model.X_FTU_RLD;
+import net.frontuari.custom.model.X_FTU_OLD;
 
 
 /**
@@ -307,6 +306,12 @@ public class ImportOrder extends CustomProcess
 			log.warning("No OrderSource=" + no);
 		
 		//	Payment Term
+		sql = new StringBuilder("UPDATE I_Order o ")
+				.append("SET C_PaymentTerm_ID = (SELECT BP.C_PaymentTerm_ID FROM C_BPartner BP WHERE BP.TaxID = o.BPTaxID) ")
+				.append("WHERE C_PaymentTerm_ID IS NULL AND o.PaymentTermValue IS NULL AND o.I_IsImported <> 'Y'")
+				.append(clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set BPa	rtner PaymentTerm=" + no);
 		sql = new StringBuilder ("UPDATE I_Order o ")
 			  .append("SET C_PaymentTerm_ID=(SELECT C_PaymentTerm_ID FROM C_PaymentTerm p")
 			  .append(" WHERE o.PaymentTermValue=p.Value AND o.AD_Client_ID=p.AD_Client_ID) ")
@@ -319,7 +324,6 @@ public class ImportOrder extends CustomProcess
 			  .append("WHERE C_PaymentTerm_ID IS NULL AND o.PaymentTermValue IS NULL AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Default PaymentTerm=" + no);
-		//
 		sql = new StringBuilder ("UPDATE I_Order ")
 			  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=No PaymentTerm, ' ")
 			  .append("WHERE C_PaymentTerm_ID IS NULL")

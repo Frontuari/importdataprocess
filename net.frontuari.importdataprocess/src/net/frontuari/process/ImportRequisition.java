@@ -36,7 +36,7 @@ import org.compiere.util.Env;
 
 import net.frontuari.base.CustomProcess;
 import net.frontuari.custom.model.FTUMRequisition;
-import net.frontuari.model.X_FTU_RLD;
+import net.frontuari.custom.model.X_FTU_RLD;
 import net.frontuari.model.X_I_Requisition;
 
 /**
