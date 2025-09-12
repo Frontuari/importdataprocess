@@ -235,26 +235,19 @@ public class ImportGLJournal extends CustomProcess {
 				pstmtValidateCXP = DB.prepareStatement(sql.toString(), get_TrxName());
 				rsValidateCXP = pstmtValidateCXP.executeQuery();
 				while (rsValidateCXP.next()) {
-					X_I_GLJournal imp = new X_I_GLJournal(getCtx(), rsValidateCXP, get_TrxName());
-					String content = imp.get_ValueAsString("SPIFileContentCXP").trim();
+					int I_GLJournal_ID = rsValidateCXP.getInt("I_GLJournal_ID");
+					String content = rsValidateCXP.getString("SPIFileContentCXP");
+					if (content == null) continue;
+					content = content.trim();
 					String[] parts = content.split("\\s+");
 
-					// Validar que hay suficientes partes (mínimo 9 para los campos básicos)
-					if (parts.length < 9)
-						continue;
+					if (parts.length < 10) continue;
 
-					// Asignar campos básicos
 					String OrgValue = parts[0];
-					String cedula = parts[6]; // cédula del tercero
-					String acctIndicator = parts[7]; // indicador de cuenta
-					String trxType = parts[8]; // sigue usando el tipo de transacción para Dr/Cr
-
-					log.warning("ImportGLJournal SPIFileContentCXP: OrgValue=" + OrgValue + ", cedula=" + cedula
-							+ ", acctIndicator=" + acctIndicator + ", trxType=" + trxType);
-
-					// Extraer monto y descripción (el monto puede estar pegado a la descripción)
+					String cedula = parts[6];
+					String acctIndicator = parts[7];
+					String trxType = parts[8];
 					String montoYDescripcion = content.substring(content.indexOf(parts[9]));
-					log.warning("ImportGLJournal SPIFileContentCXP: montoYDescripcion=" + montoYDescripcion);
 
 					String regex = "^([\\d.,]+)(.*)$";
 					java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(regex);
@@ -269,36 +262,68 @@ public class ImportGLJournal extends CustomProcess {
 						amt = parts[9].replace(",", ".").trim();
 						Description = "";
 					}
-					log.warning("ImportGLJournal SPIFileContentCXP: amt=" + amt + ", Description=" + Description);
+
+					// Validar AcctIndicator
+					String[] validIndicators = {"Y", "K", "Z", "U", "E", "J", "T", "Q", "N"};
+					boolean isValidIndicator = false;
+					for (String v : validIndicators) {
+						if (acctIndicator.equalsIgnoreCase(v)) {
+							isValidIndicator = true;
+							break;
+						}
+					}
 
 					// Usar la fecha actual del sistema
 					Timestamp ts = new Timestamp(System.currentTimeMillis());
 
-					// set values
-					imp.setDateAcct(ts);
-					imp.setOrgValue(OrgValue);
-					imp.setOrgTrxValue(OrgValue);
-					imp.set_ValueOfColumn("BPartnerValue", cedula); // cédula en BPartnerValue
-					imp.set_ValueOfColumn("AcctIndicator", acctIndicator); // indicador de cuenta
-					imp.setDescription(Description);
+					// Insertar los datos en la base de datos, aunque haya error
+					String updateSQL = "UPDATE I_GLJournal SET DateAcct=?, OrgValue=?, OrgTrxValue=?, BPartnerValue=?, AcctIndicator=?, Description=?, AmtSourceDr=?, AmtSourceCr=?, AmtAcctDr=?, AmtAcctCr=?, I_IsImported=?, I_ErrorMsg=? WHERE I_GLJournal_ID=?";
+					PreparedStatement pstmtUpdate = DB.prepareStatement(updateSQL, get_TrxName());
+					pstmtUpdate.setTimestamp(1, ts);
+					pstmtUpdate.setString(2, OrgValue);
+					pstmtUpdate.setString(3, OrgValue);
+					pstmtUpdate.setString(4, cedula);
+					pstmtUpdate.setString(5, acctIndicator);
+					pstmtUpdate.setString(6, Description);
 
+					BigDecimal Amt = BigDecimal.ZERO;
+					boolean montoError = false;
 					try {
-						BigDecimal Amt = new BigDecimal(amt);
-						if (trxType.equalsIgnoreCase("1")) {
-							imp.setAmtAcctDr(Amt);
-							imp.setAmtSourceDr(Amt);
-						} else {
-							imp.setAmtAcctCr(Amt);
-							imp.setAmtSourceCr(Amt);
-						}
+						Amt = new BigDecimal(amt);
 					} catch (NumberFormatException ex) {
-						imp.setI_ErrorMsg("ERROR en monto: " + amt);
-						imp.setI_IsImported(false);
-						imp.saveEx();
-						continue;
+						montoError = true;
 					}
 
-					imp.saveEx();
+					if (trxType.equalsIgnoreCase("1")) {
+						pstmtUpdate.setBigDecimal(7, Amt); // AmtSourceDr
+						pstmtUpdate.setBigDecimal(8, BigDecimal.ZERO); // AmtSourceCr
+						pstmtUpdate.setBigDecimal(9, Amt); // AmtAcctDr
+						pstmtUpdate.setBigDecimal(10, BigDecimal.ZERO); // AmtAcctCr
+					} else {
+						pstmtUpdate.setBigDecimal(7, BigDecimal.ZERO); // AmtSourceDr
+						pstmtUpdate.setBigDecimal(8, Amt); // AmtSourceCr
+						pstmtUpdate.setBigDecimal(9, BigDecimal.ZERO); // AmtAcctDr
+						pstmtUpdate.setBigDecimal(10, Amt); // AmtAcctCr
+					}
+
+					// Setea como error si corresponde, pero siempre actualiza los valores
+					String isImported = "N";
+					String errorMsg = "";
+					if (!isValidIndicator) {
+						isImported = "E";
+						errorMsg += "ERROR: AcctIndicator inválido: " + acctIndicator + " ";
+					}
+					if (montoError) {
+						isImported = "E";
+						errorMsg += "ERROR en monto: " + amt + " ";
+					}
+					pstmtUpdate.setString(11, isImported);
+					pstmtUpdate.setString(12, errorMsg.trim());
+					pstmtUpdate.setInt(13, I_GLJournal_ID);
+
+					pstmtUpdate.executeUpdate();
+					log.warning("Registro actualizado en I_GLJournal_ID=" + I_GLJournal_ID + " | OrgValue=" + OrgValue + " | BPartnerValue=" + cedula + " | AcctIndicator=" + acctIndicator + " | amt=" + amt + " | Description=" + Description);
+					DB.close(pstmtUpdate);
 				}
 			} catch (SQLException e) {
 				log.log(Level.SEVERE, sql.toString(), e);
@@ -610,20 +635,29 @@ public class ImportGLJournal extends CustomProcess {
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE))
-			log.fine("Set Account from Value=" + no);
-		sql = new StringBuilder("UPDATE I_GLJournal i ")
-				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Account, '")
-				.append("WHERE (Account_ID IS NULL OR Account_ID=0)")
-				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
-				.append(clientCheck);
+		if (log.isLoggable(Level.FINE)) log.fine("Set Account from Value=" + no);
+		//	Set Account by Acct Indicator
+		sql = new StringBuilder ("UPDATE I_GLJournal i ")
+			.append("SET Account_ID=(SELECT MAX(ev.C_ElementValue_ID) FROM C_ElementValue ev")
+			.append(" INNER JOIN C_Element e ON (e.C_Element_ID=ev.C_Element_ID)")
+			.append(" INNER JOIN C_AcctSchema_Element ase ON (e.C_Element_ID=ase.C_Element_ID AND ase.ElementType='AC')")
+			.append(" WHERE ev.AcctIndicator=i.AcctIndicator AND ev.IsSummary='N'")
+			.append(" AND i.C_AcctSchema_ID=ase.C_AcctSchema_ID AND i.AD_Client_ID=ev.AD_Client_ID) ")
+			.append("WHERE Account_ID IS NULL AND AccountValue IS NULL AND AcctIndicator IS NOT NULL ")
+			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Account from Value=" + no);
+		sql = new StringBuilder ("UPDATE I_GLJournal i ")
+			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Account, '")
+			.append("WHERE (Account_ID IS NULL OR Account_ID=0)")
+			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning("Invalid Account=" + no);
 
 		// Set BPartner by Value
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
-				.append("SET C_BPartner_ID=(SELECT bp.C_BPartner_ID FROM C_BPartner bp")
+				.append("SET C_BPartner_ID=(SELECT MAX(bp.C_BPartner_ID) FROM C_BPartner bp")
 				.append(" WHERE bp.TaxID=i.BPartnerValue AND bp.IsSummary='N' AND i.AD_Client_ID=bp.AD_Client_ID) ")
 				.append("WHERE C_BPartner_ID IS NULL AND BPartnerValue IS NOT NULL")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
@@ -639,7 +673,7 @@ public class ImportGLJournal extends CustomProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		// Set BPartner by TaxID
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
-				.append("SET C_BPartner_ID=(SELECT bp.C_BPartner_ID FROM C_BPartner bp")
+				.append("SET C_BPartner_ID=(SELECT MAX(bp.C_BPartner_ID) FROM C_BPartner bp")
 				.append(" WHERE bp.TaxID=i.BPTaxID AND bp.IsSummary='N' AND i.AD_Client_ID=bp.AD_Client_ID) ")
 				.append("WHERE C_BPartner_ID IS NULL AND BPTaxID IS NOT NULL")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
@@ -679,7 +713,7 @@ public class ImportGLJournal extends CustomProcess {
 
 		// Set Project
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
-				.append("SET C_Project_ID=(SELECT p.C_Project_ID FROM C_Project p")
+				.append("SET C_Project_ID=(SELECT MAX(p.C_Project_ID) FROM C_Project p")
 				.append(" WHERE p.Value=i.ProjectValue AND p.IsSummary='N' AND i.AD_Client_ID=p.AD_Client_ID) ")
 				.append("WHERE C_Project_ID IS NULL AND ProjectValue IS NOT NULL")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
@@ -700,7 +734,7 @@ public class ImportGLJournal extends CustomProcess {
 		// Activity, Campaign, Sales Region
 		// Set Campaign
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
-				.append("SET C_Campaign_ID=(SELECT p.C_Campaign_ID FROM C_Campaign p")
+				.append("SET C_Campaign_ID=(SELECT MAX(p.C_Campaign_ID) FROM C_Campaign p")
 				.append(" WHERE p.Value=i.CampaignValue AND p.IsSummary='N' AND i.AD_Client_ID=p.AD_Client_ID) ")
 				.append("WHERE C_Campaign_ID IS NULL AND CampaignValue IS NOT NULL")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
@@ -719,7 +753,7 @@ public class ImportGLJournal extends CustomProcess {
 
 		// Set Activity
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
-				.append("SET C_Activity_ID=(SELECT p.C_Activity_ID FROM C_Activity p")
+				.append("SET C_Activity_ID=(SELECT MAX(p.C_Activity_ID) FROM C_Activity p")
 				.append(" WHERE p.Value=i.ActivityValue AND p.IsSummary='N' AND i.AD_Client_ID=p.AD_Client_ID) ")
 				.append("WHERE C_Activity_ID IS NULL AND ActivityValue IS NOT NULL")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
@@ -736,9 +770,9 @@ public class ImportGLJournal extends CustomProcess {
 		 * if (no != 0) log.warning ("Invalid Activity=" + no);
 		 */
 
-		// Set User1_ID David Castillo
+		// Set User1_ID
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
-				.append("SET User1_ID=(SELECT p.C_ElementValue_ID FROM c_elementvalue p")
+				.append("SET User1_ID=(SELECT MAX(p.C_ElementValue_ID) FROM c_elementvalue p")
 				.append(" JOIN C_Element e on p.C_Element_ID = e.C_Element_ID and e.ElementType = 'U'")
 				.append(" WHERE p.Value=i.User1Value AND p.IsSummary='N' AND i.AD_Client_ID=p.AD_Client_ID) ")
 				.append("WHERE User1_ID IS NULL AND User1Value IS NOT NULL")
@@ -758,7 +792,7 @@ public class ImportGLJournal extends CustomProcess {
 
 		// Set SalesRegion
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
-				.append("SET C_SalesRegion_ID=(SELECT p.C_SalesRegion_ID FROM C_SalesRegion p")
+				.append("SET C_SalesRegion_ID=(SELECT MAX(p.C_SalesRegion_ID) FROM C_SalesRegion p")
 				.append(" WHERE p.Value=i.SalesRegionValue AND p.IsSummary='N' AND i.AD_Client_ID=p.AD_Client_ID) ")
 				.append("WHERE C_SalesRegion_ID IS NULL AND SalesRegionValue IS NOT NULL")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
@@ -776,7 +810,7 @@ public class ImportGLJournal extends CustomProcess {
 			log.warning("Invalid SalesRegion=" + no);
 
 		// Set TrxOrg
-		sql = new StringBuilder("UPDATE I_GLJournal i ").append("SET AD_OrgTrx_ID=(SELECT o.AD_Org_ID FROM AD_Org o")
+		sql = new StringBuilder("UPDATE I_GLJournal i ").append("SET AD_OrgTrx_ID=(SELECT MAX(o.AD_Org_ID) FROM AD_Org o")
 				.append(" WHERE o.Value=i.OrgTrxValue AND o.IsSummary='N' AND i.AD_Client_ID=o.AD_Client_ID) ")
 				.append("WHERE AD_OrgTrx_ID IS NULL AND OrgTrxValue IS NOT NULL")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
