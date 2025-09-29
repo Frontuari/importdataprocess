@@ -133,105 +133,89 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
         rsValidate = pstmtValidate.executeQuery();
         //
         while (rsValidate.next()) {
-            X_I_GLJournal imp = new X_I_GLJournal(getCtx(), rsValidate, get_TrxName());
-            String content = imp.get_ValueAsString("SPIFileContent").trim();
+    X_I_GLJournal imp = new X_I_GLJournal(getCtx(), rsValidate, get_TrxName());
+    
+    // 1. Limpieza y estandarización de la línea
+    // Eliminar posibles doble punto y coma (;;) que causan índices vacíos no deseados.
+    // Usamos -1 para el limite para mantener las columnas vacías al final (ej. si falta el C_Costo)
+    String content = imp.get_ValueAsString("SPIFileContent").trim().replaceAll(";{2,}", ";");
+    String[] parts = content.split(";", -1); // El -1 asegura que las partes vacías al final se cuenten.
 
-            // Separar por punto y coma (formato SPI)
-            String[] parts = content.split(";");
-            if (parts.length < 9) continue;
+    // Necesitamos al menos 12 partes para una línea completa (índices 0 a 11)
+    if (parts.length < 12) { 
+        imp.setI_ErrorMsg("Línea incompleta. Partes esperadas: 12. Encontradas: " + parts.length);
+        imp.setI_IsImported(false);
+        imp.saveEx();
+        continue;
+    }
 
-            // Valores comunes
-            String OrgValue = parts[0];
-            String trxType = "";
-            String accountNo = "";
-            String cedula = "";
-            String acctIndicator = "";
-            String amt = "";
-            String Description = "";
+    // Declaración de variables clave
+    String OrgValue = parts[0].trim(); // Columna 1
+    String DateAcctString = parts[5].trim(); // Columna 6 (La usaremos como está, Adempiere la procesa)
+    String AccountOrBPartner = parts[6].trim(); // Columna 7
+    String TrxType = parts[8].trim(); // Columna 9 (El tipo de transacción 1/2)
+    String AmtString = parts[9].trim(); // Columna 10
+    String Description = parts[10].trim(); // Columna 11
+    String CentroCosto = parts[11].trim(); // Columna 12 (Puede estar vacía)
+    String AcctIndicatorField = parts[7].trim(); // Columna 8 (Indicador de Bifurcación)
 
-            // ---- LÓGICA UNIFICADA ----
-            if (parts[7].length() == 1) {
-                // Caso "CXP" → parts[6] es la cédula y parts[7] es AcctIndicator
-                cedula = parts[6];
-                acctIndicator = parts[7];
-                trxType = parts[8];
+    // 2. Lógica de bifurcación (Columna 8 / parts[7])
+    if (AcctIndicatorField.isEmpty()) { 
+        // CASO A: Columna 8 VACÍA -> Es una Cuenta Contable
+        imp.setAccountValue(AccountOrBPartner); // parts[6] es el número de cuenta
+    } else {
+        // CASO B: Columna 8 LLENA -> Es una Cédula/Tercero
+        imp.setBPartnerValue(AccountOrBPartner); // parts[6] es la cédula
+        imp.set_ValueOfColumn("AcctIndicator", AcctIndicatorField); // parts[7] es el indicador (Ej: "Q")
+    }
+    
+    // 3. Set de campos comunes
+    // Mapeo de la Organización
+    imp.setOrgValue(OrgValue);
+    imp.setOrgTrxValue(OrgValue);
+    
+    // Mapeo de la Fecha (Adempiere/iDempiere suele manejar strings de fecha y los convierte)
+    // Usamos la fecha del archivo (columna 6) en lugar de la fecha actual del sistema.
+    imp.setDateAcct(new Timestamp(CData.stringToDate(DateAcctString).getTime())); 
+    
+    // Mapeo de la Descripción
+    imp.setDescription(Description);
 
-                // Extraer monto + descripción desde parts[9] en adelante
-                String montoYDescripcion = content.substring(content.indexOf(parts[9]));
-                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^([\\d.,]+)(.*)$");
-                java.util.regex.Matcher matcher = pattern.matcher(montoYDescripcion.trim());
-                if (matcher.find()) {
-                    amt = matcher.group(1).replace(",", ".").trim();
-                    Description = matcher.group(2).trim();
-                } else {
-                    amt = parts[9].replace(",", ".").trim();
-                }
-
-                imp.setBPartnerValue(cedula);
-                imp.set_ValueOfColumn("AcctIndicator", acctIndicator);
-
-            } else {
-                // Caso normal → parts[6] es la cuenta contable, parts[7] es el trxType
-                accountNo = parts[6];
-                trxType = parts[7];
-
-                // Extraer monto + descripción desde parts[8] en adelante
-                String montoYDescripcion = content.substring(content.indexOf(parts[8]));
-                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^([\\d.,]+)(.*)$");
-                java.util.regex.Matcher matcher = pattern.matcher(montoYDescripcion.trim());
-                if (matcher.find()) {
-                    amt = matcher.group(1).replace(",", ".").trim();
-                    Description = matcher.group(2).trim();
-                } else {
-                    amt = parts[8].replace(",", ".").trim();
-                }
-
-                imp.setAccountValue(accountNo);
-            }
-
-            // Buscar centro de costo (última columna si es numérica)
-            String centroCosto = "";
-            if (parts.length > 10) {
-                String posibleCentroCosto = parts[parts.length - 1];
-                if (posibleCentroCosto.matches("\\d+")) {
-                    centroCosto = posibleCentroCosto;
-                    if (!Description.isEmpty() && Description.endsWith(centroCosto)) {
-                        Description = Description.substring(0, Description.length() - centroCosto.length()).trim();
-                    }
-                }
-            }
-
-            // Fecha actual
-            Timestamp ts = new Timestamp(System.currentTimeMillis());
-
-            // Set comunes
-            imp.setDateAcct(ts);
-            imp.setOrgValue(OrgValue);
-            imp.setOrgTrxValue(OrgValue);
-            imp.setDescription(Description);
-
-            if (!centroCosto.isEmpty()) {
-                imp.set_ValueOfColumn("User1Value", centroCosto);
-            }
-
-            // Monto
-            try {
-                BigDecimal Amt = new BigDecimal(amt);
-                if (trxType.equalsIgnoreCase("1")) {
-                    imp.setAmtAcctDr(Amt);
-                    imp.setAmtSourceDr(Amt);
-                } else {
-                    imp.setAmtAcctCr(Amt);
-                    imp.setAmtSourceCr(Amt);
-                }
-            } catch (NumberFormatException ex) {
-                imp.setI_ErrorMsg("ERROR en monto: " + amt);
-                imp.setI_IsImported(false);
-                imp.saveEx();
-                continue;
-            }
-
-            imp.saveEx();
+    // Mapeo del Centro de Costo (User1Value)
+    if (!CentroCosto.isEmpty() && CentroCosto.matches("\\d+")) {
+        // Asumiendo que User1Value es el centro de costo (Project/C_BPartner/User1/User2 según la configuración)
+        imp.set_ValueOfColumn("User1Value", CentroCosto); 
+    }
+    
+    // 4. Procesamiento y Mapeo del Monto (Columna 10 / parts[9])
+    // Convertir formato Latinoamericano (1.176,00) a formato Java (1176.00)
+    AmtString = AmtString.replace(".", "").replace(",", ".").trim();
+    
+    try {
+        BigDecimal Amt = new BigDecimal(AmtString);
+        
+        // Mapeo del Tipo de Transacción (Columna 9 / parts[8])
+        if (TrxType.equalsIgnoreCase("1")) {
+            imp.setAmtAcctDr(Amt);
+            imp.setAmtSourceDr(Amt);
+        } else if (TrxType.equalsIgnoreCase("2")) {
+            imp.setAmtAcctCr(Amt);
+            imp.setAmtSourceCr(Amt);
+        } else {
+             imp.setI_ErrorMsg("ERROR en tipo de transacción (Col 9). Valor: " + TrxType);
+             imp.setI_IsImported(false);
+             imp.saveEx();
+             continue;
+        }
+    } catch (NumberFormatException ex) {
+        imp.setI_ErrorMsg("ERROR en monto (formato inválido): " + AmtString);
+        imp.setI_IsImported(false);
+        imp.saveEx();
+        continue;
+    }
+    
+    // Guardar la línea procesada
+    imp.saveEx();
         }
 
     } catch (SQLException e) {
