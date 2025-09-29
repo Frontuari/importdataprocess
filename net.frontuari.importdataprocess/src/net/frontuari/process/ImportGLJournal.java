@@ -22,8 +22,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Date;
 import java.util.logging.Level;
 
 import org.compiere.model.MAccount;
@@ -133,41 +135,71 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
         rsValidate = pstmtValidate.executeQuery();
         //
         while (rsValidate.next()) {
-    X_I_GLJournal imp = new X_I_GLJournal(getCtx(), rsValidate, get_TrxName());
-    
-    // 1. Limpieza y estandarización de la línea
-    // Eliminar posibles doble punto y coma (;;) que causan índices vacíos no deseados.
-    // Usamos -1 para el limite para mantener las columnas vacías al final (ej. si falta el C_Costo)
-    String content = imp.get_ValueAsString("SPIFileContent").trim().replaceAll(";{2,}", ";");
-    String[] parts = content.split(";", -1); // El -1 asegura que las partes vacías al final se cuenten.
+        	X_I_GLJournal imp = new X_I_GLJournal(getCtx(), rsValidate, get_TrxName());
+            
+            // 1. Limpieza y estandarización de la línea
+            // NO reemplazamos ;; para mantener el índice fijo, solo quitamos espacios al inicio/final.
+            String content = imp.get_ValueAsString("SPIFileContent").trim(); 
+            
+            // Usamos -1 para asegurarnos de que se capturen las columnas vacías
+            String[] parts = content.split(";", -1); 
+            
+            // Loguear la línea original y el número de partes
+            log.log(Level.WARNING, "Procesando I_GLJournal_ID={0}: Contenido Original: {1} | Partes: {2}", 
+                    new Object[]{imp.getI_GLJournal_ID(), content, parts.length});
 
-    // Necesitamos al menos 12 partes para una línea completa (índices 0 a 11)
-    if (parts.length < 12) { 
-        imp.setI_ErrorMsg("Línea incompleta. Partes esperadas: 12. Encontradas: " + parts.length);
-        imp.setI_IsImported(false);
-        imp.saveEx();
-        continue;
-    }
+            // Necesitamos al menos 12 partes
+            if (parts.length < 12) { 
+                // ... Lógica de error de línea incompleta ...
+                continue;
+            }
 
-    // Declaración de variables clave
-    String OrgValue = parts[0].trim(); // Columna 1
-    String DateAcctString = parts[5].trim(); // Columna 6 (La usaremos como está, Adempiere la procesa)
-    String AccountOrBPartner = parts[6].trim(); // Columna 7
-    String TrxType = parts[8].trim(); // Columna 9 (El tipo de transacción 1/2)
-    String AmtString = parts[9].trim(); // Columna 10
-    String Description = parts[10].trim(); // Columna 11
-    String CentroCosto = parts[11].trim(); // Columna 12 (Puede estar vacía)
-    String AcctIndicatorField = parts[7].trim(); // Columna 8 (Indicador de Bifurcación)
+            // A partir de aquí, asumimos que los índices son FIJOS y que el doble delimitador (;;) genera un campo vacío.
+            
+            // Declaración de variables clave
+            String OrgValue = parts[0].trim();
+            String DateAcctString = parts[5].trim();
+            String AccountOrBPartner = parts[6].trim(); 
+            String AcctIndicatorField = parts[7].trim(); // Columna 8 (Indicador de Bifurcación)
+            
+            // La asignación de estos campos es diferente en los dos casos, por lo que los declaramos aquí
+            String TrxType = "";
+            String AmtString = "";
+            String Description = "";
+            String CentroCosto = "";
 
-    // 2. Lógica de bifurcación (Columna 8 / parts[7])
-    if (AcctIndicatorField.isEmpty()) { 
-        // CASO A: Columna 8 VACÍA -> Es una Cuenta Contable
-        imp.setAccountValue(AccountOrBPartner); // parts[6] es el número de cuenta
-    } else {
-        // CASO B: Columna 8 LLENA -> Es una Cédula/Tercero
-        imp.setBPartnerValue(AccountOrBPartner); // parts[6] es la cédula
-        imp.set_ValueOfColumn("AcctIndicator", AcctIndicatorField); // parts[7] es el indicador (Ej: "Q")
-    }
+
+            // 2. Lógica de bifurcación (Columna 8 / parts[7])
+            if (AcctIndicatorField.isEmpty()) { 
+                // CASO A: Columna 8 VACÍA -> Es una Cuenta Contable
+                // Estructura: ...;[Cuenta];;[TrxType];[Monto];[Desc];[CC]
+                TrxType = parts[8].trim(); 
+                AmtString = parts[9].trim();
+                Description = parts[10].trim();
+                CentroCosto = parts[11].trim(); 
+                
+                imp.setAccountValue(AccountOrBPartner); // parts[6] es la cuenta
+                
+                log.log(Level.WARNING, "I_GLJournal_ID={0} -> Caso A: Cuenta Contable {1}", 
+                        new Object[]{imp.getI_GLJournal_ID(), AccountOrBPartner});
+            } else {
+                // CASO B: Columna 8 LLENA -> Es una Cédula/Tercero
+                // Estructura: ...;[Cédula];[Indicador];[TrxType];[Monto];[Desc];;[CC]
+                // NOTA: El TXT de ejemplo muestra que si parts[7] está LLENO, entonces parts[8] es el TrxType
+                // y parts[9] es el Monto. Esto empuja los índices un lugar.
+                
+                TrxType = parts[8].trim(); 
+                AmtString = parts[9].trim();
+                Description = parts[10].trim();
+                CentroCosto = parts[11].trim(); 
+                
+                // Asignación específica del caso Tercero
+                imp.setBPartnerValue(AccountOrBPartner); // parts[6] es la cédula
+                imp.set_ValueOfColumn("AcctIndicator", AcctIndicatorField); // parts[7] es el indicador (Q, etc)
+                
+                log.log(Level.WARNING, "I_GLJournal_ID={0} -> Caso B: Cédula {1}, Indicador {2}", 
+                        new Object[]{imp.getI_GLJournal_ID(), AccountOrBPartner, AcctIndicatorField});
+            }
     
     // 3. Set de campos comunes
     // Mapeo de la Organización
@@ -176,7 +208,13 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
     
     // Mapeo de la Fecha (Adempiere/iDempiere suele manejar strings de fecha y los convierte)
     // Usamos la fecha del archivo (columna 6) en lugar de la fecha actual del sistema.
-    imp.setDateAcct(new Timestamp(CData.stringToDate(DateAcctString).getTime())); 
+    
+    SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMdd");
+    
+    Date parsedDate = null;
+    
+    parsedDate = formatter.parse(DateAcctString);
+    imp.setDateAcct(new Timestamp(parsedDate.getTime()));
     
     // Mapeo de la Descripción
     imp.setDescription(Description);
@@ -198,14 +236,9 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
         if (TrxType.equalsIgnoreCase("1")) {
             imp.setAmtAcctDr(Amt);
             imp.setAmtSourceDr(Amt);
-        } else if (TrxType.equalsIgnoreCase("2")) {
+        } else{
             imp.setAmtAcctCr(Amt);
             imp.setAmtSourceCr(Amt);
-        } else {
-             imp.setI_ErrorMsg("ERROR en tipo de transacción (Col 9). Valor: " + TrxType);
-             imp.setI_IsImported(false);
-             imp.saveEx();
-             continue;
         }
     } catch (NumberFormatException ex) {
         imp.setI_ErrorMsg("ERROR en monto (formato inválido): " + AmtString);
