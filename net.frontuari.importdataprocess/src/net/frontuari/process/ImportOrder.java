@@ -556,6 +556,39 @@ public class ImportOrder extends CustomProcess
 				.append(" AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Account_ID from AccountValue=" + no);
+		
+		//		Set Activity
+			sql = new StringBuilder ("UPDATE I_Order o ")	//	Activity
+				  .append("SET C_Activity_ID=(SELECT MAX(C_Activity_ID) FROM C_Activity a WHERE a.Value=o.ActivityValue OR a.Name=o.ActivityName")
+				  .append(" AND o.AD_Client_ID=a.AD_Client_ID) ")
+				  .append("WHERE C_Activity_ID IS NULL AND ActivityValue IS NOT NULL OR ActivityName IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (log.isLoggable(Level.FINE)) log.fine("Set Activity=" + no);
+			sql = new StringBuilder ("UPDATE I_Order ")	//	Error Invalid Activity
+				  .append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Activity, ' ")
+				  .append("WHERE C_Activity_ID IS NULL AND ActivityValue IS NOT NULL")
+				  .append(" AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (no != 0)
+				log.warning ("Invalid Activity=" + no);
+		
+			
+			//		Set ActivityDistributionLine
+			sql = new StringBuilder ("UPDATE I_Order o ")	//	ActivityDistributionLineValue
+					.append("SET C_ActivityDistributionLine_ID=(SELECT MAX(C_Activity_ID) FROM C_Activity a WHERE a.Value=o.ActivityDistributionLineValue")
+					.append(" AND o.AD_Client_ID=a.AD_Client_ID) ")
+					.append("WHERE C_ActivityDistributionLine_ID IS NULL AND ActivityDistributionLineValue IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (log.isLoggable(Level.FINE)) log.fine("Set Activity=" + no);
+			sql = new StringBuilder ("UPDATE I_Order ")	//	Error Invalid Activity
+					.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Activity Distribution Line, ' ")
+					.append("WHERE C_ActivityDistributionLine_ID IS NULL AND ActivityDistributionLineValue IS NOT NULL")
+					.append(" AND I_IsImported<>'Y'").append (clientCheck);
+			no = DB.executeUpdate(sql.toString(), get_TrxName());
+			if (no != 0)
+				log.warning ("Invalid Activity Distribution Line=" + no);
+		
+			
 		//	Charge
 		sql = new StringBuilder ("UPDATE I_Order o ")
 			  .append("SET C_Charge_ID=(SELECT C_Charge_ID FROM C_Charge c")
@@ -952,8 +985,7 @@ public class ImportOrder extends CustomProcess
 		                .subtract(priceList.multiply(discountObj).divide(new BigDecimal(100), 2, RoundingMode.HALF_UP))
 		                .subtract(priceList.multiply(addDiscount).divide(new BigDecimal(100), 2, RoundingMode.HALF_UP));
 
-		        // Crear clave para agrupamiento de líneas
-		        String lineKey = imp.getM_Product_ID() + "-" + imp.getQtyOrdered()
+		        String lineKey = imp.getDocumentNo()+ "-" + imp.getDateOrdered() + "-" + imp.getC_BPartner_ID() + "-" + imp.getM_Product_ID() + imp.getC_Charge_ID() + "-" + imp.getDescription() + "-" + imp.getQtyOrdered()
 		                + "-" + imp.getC_UOM_ID() + "-" + finalPrice;
 
 		        FTUMOrderLine line;
@@ -1001,31 +1033,39 @@ public class ImportOrder extends CustomProcess
 		            line = lineMap.get(lineKey);
 		        }
 
-		        // Crear X_FTU_OLD si aplica
-		        if (!imp.isSOTrx()) {
-		            Boolean isExpenseDistributiveFromImp = imp.get_ValueAsBoolean("IsExpenseDistributive");
-		            line.set_ValueOfColumn("IsExpenseDistributive", isExpenseDistributiveFromImp);
-		            line.saveEx();
+		        Boolean isExpenseDistributiveFromImp = imp.get_ValueAsBoolean("IsExpenseDistributive");
+		        
+				// Crear X_FTU_OLD si aplica
+				if (!imp.isSOTrx() && isExpenseDistributiveFromImp) {
 
-		            if (Boolean.TRUE.equals(isExpenseDistributiveFromImp)) {
-		                X_FTU_OLD rld = new X_FTU_OLD(getCtx(), 0, get_TrxName());
-		                rld.setC_OrderLine_ID(line.getC_OrderLine_ID());
+					line.set_ValueOfColumn("IsExpenseDistributive", isExpenseDistributiveFromImp);
+					line.set_ValueOfColumn("DistributionMethod", imp.get_Value("DistributionMethod"));
+					
+					line.saveEx();
 
-		                if (imp.get_ValueAsInt("UserLine1_ID") > 0)
-		                    rld.setUserLine1_ID(imp.get_ValueAsInt("UserLine1_ID"));
+					X_FTU_OLD rld = new X_FTU_OLD(getCtx(), 0, get_TrxName());
+					rld.setC_OrderLine_ID(line.getC_OrderLine_ID());
+					rld.setAD_Org_ID(imp.getAD_OrgTrx_ID());
 
-		                if (imp.get_Value("Account_ID") != null)
-		                    rld.setAccount_ID(imp.get_ValueAsInt("Account_ID"));
+					
+					if (imp.get_ValueAsInt("UserLine1_ID") > 0)
+						rld.setUserLine1_ID(imp.get_ValueAsInt("UserLine1_ID"));
 
-		                if (imp.get_Value("Amount") != null)
-		                    rld.setAmount((BigDecimal) imp.get_Value("Amount"));
+					if (imp.get_Value("Account_ID") != null)
+						rld.setAccount_ID(imp.get_ValueAsInt("Account_ID"));
 
-		                if (imp.get_Value("Description_Line") != null)
-		                    rld.setDescription_Line(imp.get_ValueAsString("Description_Line"));
+					if (imp.get_Value("Amount") != null)
+						rld.setAmount((BigDecimal) imp.get_Value("Amount"));
 
-		                rld.saveEx();
-		            }
-		        }
+					if (imp.get_Value("Description_Line") != null)
+						rld.setDescription_Line(imp.get_ValueAsString("Description_Line"));
+					
+					if (imp.get_Value("C_ActivityDistributionLine_ID") != null)
+						rld.set_ValueOfColumn("C_Activity_ID", imp.get_ValueAsInt("C_ActivityDistributionLine_ID"));
+
+					rld.saveEx();
+
+				}
 
 		        // Marcar imp como procesado
 		        imp.setC_OrderLine_ID(line.getC_OrderLine_ID());

@@ -201,9 +201,9 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		
 		//	Set Activity
 		sql = new StringBuilder ("UPDATE I_Requisition o ")	//	Activity
-			  .append("SET C_Activity_ID=(SELECT MAX(C_Activity_ID) FROM C_Activity a WHERE a.Value=o.ActivityValue")
+			  .append("SET C_Activity_ID=(SELECT MAX(C_Activity_ID) FROM C_Activity a WHERE a.Value=o.ActivityValue OR a.Name=o.ActivityName")
 			  .append(" AND o.AD_Client_ID=a.AD_Client_ID) ")
-			  .append("WHERE C_Activity_ID IS NULL AND ActivityValue IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
+			  .append("WHERE C_Activity_ID IS NULL AND ActivityValue IS NOT NULL OR ActivityName IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE)) log.fine("Set Activity=" + no);
 		sql = new StringBuilder ("UPDATE I_Requisition ")	//	Error Invalid Activity
@@ -213,6 +213,21 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (no != 0)
 			log.warning ("Invalid Activity=" + no);
+		
+		//		Set ActivityDistributionLine
+		sql = new StringBuilder ("UPDATE I_Requisition o ")	//	ActivityDistributionLineValue
+				.append("SET C_ActivityDistributionLine_ID=(SELECT MAX(C_Activity_ID) FROM C_Activity a WHERE a.Value=o.ActivityDistributionLineValue")
+				.append(" AND o.AD_Client_ID=a.AD_Client_ID) ")
+				.append("WHERE C_ActivityDistributionLine_ID IS NULL AND ActivityDistributionLineValue IS NOT NULL AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE)) log.fine("Set Activity=" + no);
+		sql = new StringBuilder ("UPDATE I_Requisition ")	//	Error Invalid Activity
+				.append("SET I_IsImported='N', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Activity Distribution Line, ' ")
+				.append("WHERE C_ActivityDistributionLine_ID IS NULL AND ActivityDistributionLineValue IS NOT NULL")
+				.append(" AND I_IsImported<>'Y'").append (clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (no != 0)
+			log.warning ("Invalid Activity Distribution Line=" + no);
 		
 		//	Set Project
 		sql = new StringBuilder ("UPDATE I_Requisition o ")	//	Project
@@ -526,6 +541,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 				    line.setPriceActual(imp.getPriceActual());
 				    line.setDescription(imp.getLineDescription());
 				    line.set_ValueOfColumn("IsExpenseDistributive", isExpenseDistributiveFromImp);
+				    line.set_ValueOfColumn("DistributionMethod", imp.get_Value("DistributionMethod"));
 
 				    // Datos de referencia
 				    if(imp.getC_Project_ID() > 0) line.set_ValueOfColumn("C_Project_ID", imp.getC_Project_ID());
@@ -551,6 +567,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 				if (isExpenseDistributiveFromImp != null && isExpenseDistributiveFromImp) {
 				    X_FTU_RLD rld = new X_FTU_RLD(getCtx(), 0, get_TrxName());
 				    rld.setM_RequisitionLine_ID(oldRequisitionLine_ID);
+					rld.setAD_Org_ID(imp.getAD_OrgTrx_ID());
 				    if(imp.get_ValueAsInt("UserLine1_ID") > 0)
 				        rld.setUserLine1_ID(imp.get_ValueAsInt("UserLine1_ID"));
 				    if(imp.get_Value("Account_ID") != null)
@@ -559,6 +576,8 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 				        rld.setAmount((BigDecimal) imp.get_Value("Amount"));
 				    if(imp.get_Value("Description_Line") != null)
 				        rld.setDescription_Line(imp.get_ValueAsString("Description_Line"));
+				    if (imp.get_Value("C_ActivityDistributionLine_ID") != null)
+						rld.set_ValueOfColumn("C_Activity_ID", imp.get_ValueAsInt("C_ActivityDistributionLine_ID"));
 
 				    rld.saveEx();
 				}
