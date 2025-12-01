@@ -37,6 +37,7 @@ import org.compiere.process.ProcessInfoParameter;
 import org.compiere.util.CLogger;
 import org.compiere.util.DB;
 import org.compiere.util.TimeUtil;
+import org.compiere.model.MSysConfig;
 
 import net.frontuari.base.CustomProcess;
 
@@ -108,7 +109,20 @@ public class ImportGLJournal extends CustomProcess {
 			log.info(msglog.toString());
 		StringBuilder sql = null;
 		int no = 0;
-		StringBuilder clientCheck = new StringBuilder(" AND AD_Client_ID=").append(m_AD_Client_ID);
+		String userCheck = "";
+		boolean filterByUser = MSysConfig.getBooleanValue("IMPORT_GLJOURNAL_FILTER_BY_USER", false, m_AD_Client_ID);
+
+		if (filterByUser) {
+			int adUserId = getAD_User_ID();
+			if (adUserId > 0) {
+				userCheck = " AND CreatedBy=" + adUserId;
+				if (log.isLoggable(Level.INFO)) {
+					log.info("Filtro de Usuario Activo: Procesando solo registros de UserID=" + adUserId);
+				}
+			}
+		}
+
+		StringBuilder clientCheck = new StringBuilder(" AND AD_Client_ID=").append(m_AD_Client_ID).append(userCheck);
 
 		// **** Prepare ****
 
@@ -122,145 +136,148 @@ public class ImportGLJournal extends CustomProcess {
 
 		X_I_GLJournal test = new X_I_GLJournal(getCtx(), getRecord_ID(), get_TrxName());
 
-if (test.get_ColumnIndex("SPIFileContent") > 0) {
-    PreparedStatement pstmtValidate = null;
-    ResultSet rsValidate = null;
-    sql = new StringBuilder("SELECT * FROM I_GLJournal ")
-            .append("WHERE SPIFileContent IS NOT NULL AND I_IsImported='N'").append(clientCheck)
-            .append(" ORDER BY AD_Org_ID,TRUNC(DateAcct),COALESCE(BatchDocumentNo, I_GLJournal_ID::varchar), COALESCE(JournalDocumentNo, ")
-            .append("I_GLJournal_ID::varchar),   C_AcctSchema_ID, PostingType, C_DocType_ID, GL_Category_ID, ")
-            .append("C_Currency_ID, Line, I_GLJournal_ID");
-    try {
-        pstmtValidate = DB.prepareStatement(sql.toString(), get_TrxName());
-        rsValidate = pstmtValidate.executeQuery();
-        //
-        while (rsValidate.next()) {
-        	X_I_GLJournal imp = new X_I_GLJournal(getCtx(), rsValidate, get_TrxName());
-            
-            // 1. Limpieza y estandarización de la línea
-            // NO reemplazamos ;; para mantener el índice fijo, solo quitamos espacios al inicio/final.
-            String content = imp.get_ValueAsString("SPIFileContent").trim(); 
-            
-            // Usamos -1 para asegurarnos de que se capturen las columnas vacías
-            String[] parts = content.split(";", -1); 
-            
-            // Loguear la línea original y el número de partes
-            log.log(Level.WARNING, "Procesando I_GLJournal_ID={0}: Contenido Original: {1} | Partes: {2}", 
-                    new Object[]{imp.getI_GLJournal_ID(), content, parts.length});
+		if (test.get_ColumnIndex("SPIFileContent") > 0) {
+			PreparedStatement pstmtValidate = null;
+			ResultSet rsValidate = null;
+			sql = new StringBuilder("SELECT * FROM I_GLJournal ")
+					.append("WHERE SPIFileContent IS NOT NULL AND I_IsImported='N'").append(clientCheck)
+					.append(" ORDER BY AD_Org_ID,TRUNC(DateAcct),COALESCE(BatchDocumentNo, I_GLJournal_ID::varchar), COALESCE(JournalDocumentNo, ")
+					.append("I_GLJournal_ID::varchar),   C_AcctSchema_ID, PostingType, C_DocType_ID, GL_Category_ID, ")
+					.append("C_Currency_ID, Line, I_GLJournal_ID");
+			try {
+				pstmtValidate = DB.prepareStatement(sql.toString(), get_TrxName());
+				rsValidate = pstmtValidate.executeQuery();
+				//
+				while (rsValidate.next()) {
+					X_I_GLJournal imp = new X_I_GLJournal(getCtx(), rsValidate, get_TrxName());
 
-            // Necesitamos al menos 12 partes
-            if (parts.length < 12) { 
-                // ... Lógica de error de línea incompleta ...
-                continue;
-            }
+					// 1. Limpieza y estandarización de la línea
+					// NO reemplazamos ;; para mantener el índice fijo, solo quitamos espacios al
+					// inicio/final.
+					String content = imp.get_ValueAsString("SPIFileContent").trim();
 
-            // A partir de aquí, asumimos que los índices son FIJOS y que el doble delimitador (;;) genera un campo vacío.
-            
-            // Declaración de variables clave
-            String OrgValue = parts[0].trim();
-            String DateAcctString = parts[5].trim();
-            String AccountOrBPartner = parts[6].trim(); 
-            String AcctIndicatorField = parts[7].trim(); // Columna 8 (Indicador de Bifurcación)
-            
-            // La asignación de estos campos es diferente en los dos casos, por lo que los declaramos aquí
-            String TrxType = "";
-            String AmtString = "";
-            String Description = "";
-            String CentroCosto = "";
+					// Usamos -1 para asegurarnos de que se capturen las columnas vacías
+					String[] parts = content.split(";", -1);
 
+					// Loguear la línea original y el número de partes
+					log.log(Level.WARNING, "Procesando I_GLJournal_ID={0}: Contenido Original: {1} | Partes: {2}",
+							new Object[] { imp.getI_GLJournal_ID(), content, parts.length });
 
-            // 2. Lógica de bifurcación (Columna 8 / parts[7])
-            if (AcctIndicatorField.isEmpty()) { 
-                // CASO A: Columna 8 VACÍA -> Es una Cuenta Contable
-                // Estructura: ...;[Cuenta];;[TrxType];[Monto];[Desc];[CC]
-                TrxType = parts[8].trim(); 
-                AmtString = parts[9].trim();
-                Description = parts[10].trim();
-                CentroCosto = parts[11].trim(); 
-                
-                imp.setAccountValue(AccountOrBPartner); // parts[6] es la cuenta
-                
-                log.log(Level.WARNING, "I_GLJournal_ID={0} -> Caso A: Cuenta Contable {1}", 
-                        new Object[]{imp.getI_GLJournal_ID(), AccountOrBPartner});
-            } else {
-                // CASO B: Columna 8 LLENA -> Es una Cédula/Tercero
-                // Estructura: ...;[Cédula];[Indicador];[TrxType];[Monto];[Desc];;[CC]
-                // NOTA: El TXT de ejemplo muestra que si parts[7] está LLENO, entonces parts[8] es el TrxType
-                // y parts[9] es el Monto. Esto empuja los índices un lugar.
-                
-                TrxType = parts[8].trim(); 
-                AmtString = parts[9].trim();
-                Description = parts[10].trim();
-                CentroCosto = parts[11].trim(); 
-                
-                // Asignación específica del caso Tercero
-                imp.setBPartnerValue(AccountOrBPartner); // parts[6] es la cédula
-                imp.set_ValueOfColumn("AcctIndicator", AcctIndicatorField); // parts[7] es el indicador (Q, etc)
-                
-                log.log(Level.WARNING, "I_GLJournal_ID={0} -> Caso B: Cédula {1}, Indicador {2}", 
-                        new Object[]{imp.getI_GLJournal_ID(), AccountOrBPartner, AcctIndicatorField});
-            }
-    
-    // 3. Set de campos comunes
-    // Mapeo de la Organización
-    imp.setOrgValue(OrgValue);
-    imp.setOrgTrxValue(OrgValue);
-    
-    // Mapeo de la Fecha (Adempiere/iDempiere suele manejar strings de fecha y los convierte)
-    // Usamos la fecha del archivo (columna 6) en lugar de la fecha actual del sistema.
-    
-    SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMdd");
-    
-    Date parsedDate = null;
-    
-    parsedDate = formatter.parse(DateAcctString);
-    imp.setDateAcct(new Timestamp(parsedDate.getTime()));
-    
-    // Mapeo de la Descripción
-    imp.setDescription(Description);
+					// Necesitamos al menos 12 partes
+					if (parts.length < 12) {
+						// ... Lógica de error de línea incompleta ...
+						continue;
+					}
 
-    // Mapeo del Centro de Costo (User1Value)
-    if (!CentroCosto.isEmpty() && CentroCosto.matches("\\d+")) {
-        // Asumiendo que User1Value es el centro de costo (Project/C_BPartner/User1/User2 según la configuración)
-        imp.set_ValueOfColumn("User1Value", CentroCosto); 
-    }
-    
-    // 4. Procesamiento y Mapeo del Monto (Columna 10 / parts[9])
-    // Convertir formato Latinoamericano (1.176,00) a formato Java (1176.00)
-    AmtString = AmtString.replace(".", "").replace(",", ".").trim();
-    
-    try {
-        BigDecimal Amt = new BigDecimal(AmtString);
-        
-        // Mapeo del Tipo de Transacción (Columna 9 / parts[8])
-        if (TrxType.equalsIgnoreCase("1")) {
-            imp.setAmtAcctDr(Amt);
-            imp.setAmtSourceDr(Amt);
-        } else{
-            imp.setAmtAcctCr(Amt);
-            imp.setAmtSourceCr(Amt);
-        }
-    } catch (NumberFormatException ex) {
-        imp.setI_ErrorMsg("ERROR en monto (formato inválido): " + AmtString);
-        imp.setI_IsImported(false);
-        imp.saveEx();
-        continue;
-    }
-    
-    // Guardar la línea procesada
-    imp.saveEx();
-        }
+					// A partir de aquí, asumimos que los índices son FIJOS y que el doble
+					// delimitador (;;) genera un campo vacío.
 
-    } catch (SQLException e) {
-        log.log(Level.SEVERE, sql.toString(), e);
-        throw new Exception(e.getMessage());
-    } finally {
-        DB.close(rsValidate, pstmtValidate);
-        rsValidate = null;
-        pstmtValidate = null;
-    }
-}
+					// Declaración de variables clave
+					String OrgValue = parts[0].trim();
+					String DateAcctString = parts[5].trim();
+					String AccountOrBPartner = parts[6].trim();
+					String AcctIndicatorField = parts[7].trim(); // Columna 8 (Indicador de Bifurcación)
 
+					// La asignación de estos campos es diferente en los dos casos, por lo que los
+					// declaramos aquí
+					String TrxType = "";
+					String AmtString = "";
+					String Description = "";
+					String CentroCosto = "";
+
+					// 2. Lógica de bifurcación (Columna 8 / parts[7])
+					if (AcctIndicatorField.isEmpty()) {
+						// CASO A: Columna 8 VACÍA -> Es una Cuenta Contable
+						// Estructura: ...;[Cuenta];;[TrxType];[Monto];[Desc];[CC]
+						TrxType = parts[8].trim();
+						AmtString = parts[9].trim();
+						Description = parts[10].trim();
+						CentroCosto = parts[11].trim();
+
+						imp.setAccountValue(AccountOrBPartner); // parts[6] es la cuenta
+
+					} else {
+						// CASO B: Columna 8 LLENA -> Es una Cédula/Tercero
+						// Estructura: ...;[Cédula];[Indicador];[TrxType];[Monto];[Desc];;[CC]
+						// NOTA: El TXT de ejemplo muestra que si parts[7] está LLENO, entonces parts[8]
+						// es el TrxType
+						// y parts[9] es el Monto. Esto empuja los índices un lugar.
+
+						TrxType = parts[8].trim();
+						AmtString = parts[9].trim();
+						Description = parts[10].trim();
+						CentroCosto = parts[11].trim();
+
+						// Asignación específica del caso Tercero
+						imp.setBPartnerValue(AccountOrBPartner); // parts[6] es la cédula
+						imp.set_ValueOfColumn("AcctIndicator", AcctIndicatorField); // parts[7] es el indicador (Q, etc)
+
+						log.log(Level.WARNING, "I_GLJournal_ID={0} -> Caso B: Cédula {1}, Indicador {2}",
+								new Object[] { imp.getI_GLJournal_ID(), AccountOrBPartner, AcctIndicatorField });
+					}
+
+					// 3. Set de campos comunes
+					// Mapeo de la Organización
+					imp.setOrgValue(OrgValue);
+					imp.setOrgTrxValue(OrgValue);
+
+					// Mapeo de la Fecha (Adempiere/iDempiere suele manejar strings de fecha y los
+					// convierte)
+					// Usamos la fecha del archivo (columna 6) en lugar de la fecha actual del
+					// sistema.
+
+					SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMdd");
+
+					Date parsedDate = null;
+
+					parsedDate = formatter.parse(DateAcctString);
+					imp.setDateAcct(new Timestamp(parsedDate.getTime()));
+
+					// Mapeo de la Descripción
+					imp.setDescription(Description);
+
+					// Mapeo del Centro de Costo (User1Value)
+					if (!CentroCosto.isEmpty() && CentroCosto.matches("\\d+")) {
+						// Asumiendo que User1Value es el centro de costo
+						// (Project/C_BPartner/User1/User2 según la configuración)
+						imp.set_ValueOfColumn("User1Value", CentroCosto);
+					}
+
+					// 4. Procesamiento y Mapeo del Monto (Columna 10 / parts[9])
+					// Convertir formato Latinoamericano (1.176,00) a formato Java (1176.00)
+					AmtString = AmtString.replace(".", "").replace(",", ".").trim();
+
+					try {
+						BigDecimal Amt = new BigDecimal(AmtString);
+
+						// Mapeo del Tipo de Transacción (Columna 9 / parts[8])
+						if (TrxType.equalsIgnoreCase("1")) {
+							imp.setAmtAcctDr(Amt);
+							imp.setAmtSourceDr(Amt);
+						} else {
+							imp.setAmtAcctCr(Amt);
+							imp.setAmtSourceCr(Amt);
+						}
+					} catch (NumberFormatException ex) {
+						imp.setI_ErrorMsg("ERROR en monto (formato inválido): " + AmtString);
+						imp.setI_IsImported(false);
+						imp.saveEx();
+						continue;
+					}
+
+					// Guardar la línea procesada
+					imp.saveEx();
+				}
+
+			} catch (SQLException e) {
+				log.log(Level.SEVERE, sql.toString(), e);
+				throw new Exception(e.getMessage());
+			} finally {
+				DB.close(rsValidate, pstmtValidate);
+				rsValidate = null;
+				pstmtValidate = null;
+			}
+		}
 
 		test = null;
 
@@ -269,7 +286,7 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" Created = COALESCE (Created, SysDate),").append(" CreatedBy = COALESCE (CreatedBy, 0),")
 				.append(" Updated = COALESCE (Updated, SysDate),").append(" UpdatedBy = COALESCE (UpdatedBy, 0),")
 				.append(" I_ErrorMsg = ' ',").append(" I_IsImported = 'N' ")
-				.append("WHERE I_IsImported<>'Y' OR I_IsImported IS NULL");
+				.append("WHERE I_IsImported<>'Y' OR I_IsImported IS NULL").append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.INFO))
 			log.info("Reset=" + no);
@@ -278,7 +295,7 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
 				.append("SET AD_Client_ID=(SELECT c.AD_Client_ID FROM AD_Client c WHERE c.Value=i.ClientValue) ")
 				.append("WHERE (AD_Client_ID IS NULL OR AD_Client_ID=0) AND ClientValue IS NOT NULL")
-				.append(" AND I_IsImported<>'Y'");
+				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE))
 			log.fine("Set Client from Value=" + no);
@@ -291,10 +308,14 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 			sql.append(" C_AcctSchema_ID = COALESCE (C_AcctSchema_ID,").append(m_C_AcctSchema_ID).append("),");
 		if (m_DateAcct != null)
 			sql.append(" DateAcct = COALESCE (DateAcct,").append(DB.TO_DATE(m_DateAcct)).append("),");
-		sql.append(" Updated = COALESCE (Updated, SysDate) ").append("WHERE I_IsImported<>'Y' OR I_IsImported IS NULL");
+		sql.append(" Updated = COALESCE (Updated, SysDate) ")
+				.append("WHERE (I_IsImported<>'Y' OR I_IsImported IS NULL)").append(clientCheck); // <-- Agregado filtro
+																								// de usuario
+
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE))
 			log.fine("Client/DocOrg/Default=" + no);
+		log.fine("Client/DocOrg/Default=" + no);
 
 		// Error Doc Org
 		sql = new StringBuilder("UPDATE I_GLJournal o ")
@@ -303,9 +324,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" OR EXISTS (SELECT * FROM AD_Org oo WHERE o.AD_OrgDoc_ID=oo.AD_Org_ID AND (oo.IsSummary='Y' OR oo.IsActive='N')))")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid Doc Org=" + no);
-
+		}
 		// Set AcctSchema
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
 				.append("SET C_AcctSchema_ID=(SELECT a.C_AcctSchema_ID FROM C_AcctSchema a")
@@ -329,9 +351,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" OR NOT EXISTS (SELECT * FROM C_AcctSchema a WHERE i.AD_Client_ID=a.AD_Client_ID))")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid AcctSchema=" + no);
-
+		}
 		// Set DateAcct (mandatory)
 		sql = new StringBuilder("UPDATE I_GLJournal i ").append("SET DateAcct=SysDate ")
 				.append("WHERE DateAcct IS NULL").append(" AND I_IsImported<>'Y'").append(clientCheck);
@@ -354,9 +377,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" OR NOT EXISTS (SELECT * FROM C_DocType d WHERE i.AD_Client_ID=d.AD_Client_ID AND d.DocBaseType='GLJ'))")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid DocType=" + no);
-
+		}
 		// GL Category
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
 				.append("SET GL_Category_ID=(SELECT c.GL_Category_ID FROM GL_Category c")
@@ -371,8 +395,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append("WHERE (GL_Category_ID IS NULL OR GL_Category_ID=0)").append(" AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid GLCategory=" + no);
+		}
 
 		// Set Currency
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
@@ -396,9 +422,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append("WHERE (C_Currency_ID IS NULL OR C_Currency_ID=0)").append(" AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid Currency=" + no);
-
+		}
 		// Set Conversion Type
 		sql = new StringBuilder("UPDATE I_GLJournal i ").append("SET ConversionTypeValue='S' ")
 				.append("WHERE C_ConversionType_ID IS NULL AND ConversionTypeValue IS NULL")
@@ -419,8 +446,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append("WHERE (C_ConversionType_ID IS NULL OR C_ConversionType_ID=0) AND ConversionTypeValue IS NOT NULL")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid CurrencyTypeValue=" + no);
+		}
 
 		/*
 		 * sql = new StringBuilder ("UPDATE I_GLJournal i ")
@@ -470,9 +499,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append("WHERE CurrencyRate IS NULL OR CurrencyRate=0").append(" AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("No Rate=" + no);
-
+		}
 		// Set Period
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
 				.append("SET C_Period_ID=(SELECT MAX(p.C_Period_ID) FROM C_Period p")
@@ -495,8 +525,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" AND i.DateAcct BETWEEN p.StartDate AND p.EndDate AND p.IsActive='Y' AND p.PeriodType='S')")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid Period=" + no);
+		}
 		sql = new StringBuilder("UPDATE I_GLJournal i ").append("SET I_ErrorMsg=I_ErrorMsg||'WARN=Period Closed, ' ")
 				.append("WHERE C_Period_ID IS NOT NULL AND NOT EXISTS")
 				.append(" (SELECT * FROM C_PeriodControl pc WHERE pc.C_Period_ID=i.C_Period_ID AND DocBaseType='GLJ' AND PeriodStatus='O') ")
@@ -517,8 +549,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" (SELECT * FROM AD_Ref_List r WHERE r.AD_Reference_ID=125 AND i.PostingType=r.Value)")
 				.append(" AND I_IsImported<>'Y'").append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid PostingTypee=" + no);
+		}
 
 		// ** Account Elements (optional) **
 		// (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0)
@@ -548,8 +582,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				// I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid Org=" + no);
+		}
 
 		// Set Account
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
@@ -562,62 +598,85 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Set Account from Value=" + no);
-		//	Set Account by Acct Indicator
-		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET Account_ID=(SELECT MAX(ev.C_ElementValue_ID) FROM C_ElementValue ev")
-			.append(" INNER JOIN C_Element e ON (e.C_Element_ID=ev.C_Element_ID)")
-			.append(" INNER JOIN C_AcctSchema_Element ase ON (e.C_Element_ID=ase.C_Element_ID AND ase.ElementType='AC')")
-			.append(" WHERE ev.AcctIndicator=i.AcctIndicator AND ev.IsSummary='N'")
-			.append(" AND i.C_AcctSchema_ID=ase.C_AcctSchema_ID AND i.AD_Client_ID=ev.AD_Client_ID) ")
-			.append("WHERE Account_ID IS NULL AND AccountValue IS NULL AND AcctIndicator IS NOT NULL ")
-			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
-		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (log.isLoggable(Level.FINE)) log.fine("Set Account from Value=" + no);
-		sql = new StringBuilder ("UPDATE I_GLJournal i ")
-			.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Account, '")
-			.append("WHERE (Account_ID IS NULL OR Account_ID=0)")
-			.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'").append (clientCheck);
-		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
-			log.warning("Invalid Account=" + no);
-
-		// Set BPartner by Value
+		if (log.isLoggable(Level.FINE))
+			log.fine("Set Account from Value=" + no);
+		// Set Account by Acct Indicator
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
-				.append("SET C_BPartner_ID=(SELECT MAX(bp.C_BPartner_ID) FROM C_BPartner bp")
-				.append(" WHERE bp.TaxID=i.BPartnerValue AND bp.IsSummary='N' AND i.AD_Client_ID=bp.AD_Client_ID) ")
-				.append("WHERE C_BPartner_ID IS NULL AND BPartnerValue IS NOT NULL")
+				.append("SET Account_ID=(SELECT MAX(ev.C_ElementValue_ID) FROM C_ElementValue ev")
+				.append(" INNER JOIN C_Element e ON (e.C_Element_ID=ev.C_Element_ID)")
+				.append(" INNER JOIN C_AcctSchema_Element ase ON (e.C_Element_ID=ase.C_Element_ID AND ase.ElementType='AC')")
+				.append(" WHERE ev.AcctIndicator=i.AcctIndicator AND ev.IsSummary='N'")
+				.append(" AND i.C_AcctSchema_ID=ase.C_AcctSchema_ID AND i.AD_Client_ID=ev.AD_Client_ID) ")
+				.append("WHERE Account_ID IS NULL AND AccountValue IS NULL AND AcctIndicator IS NOT NULL ")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE))
-			log.fine("Set BPartner from Value=" + no);
+			log.fine("Set Account from Value=" + no);
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
-				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid BPartner, '")
-				.append("WHERE C_BPartner_ID IS NULL AND BPartnerValue IS NOT NULL")
+				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid Account, '")
+				.append("WHERE (Account_ID IS NULL OR Account_ID=0)")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		// Set BPartner by TaxID
+		if (no != 0) {
+			commitEx();
+			log.warning("Invalid Account=" + no);
+		}
+
+		// Set BPartner by Value
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
 				.append("SET C_BPartner_ID=(SELECT MAX(bp.C_BPartner_ID) FROM C_BPartner bp")
-				.append(" WHERE bp.TaxID=i.BPTaxID AND bp.IsSummary='N' AND i.AD_Client_ID=bp.AD_Client_ID) ")
-				.append("WHERE C_BPartner_ID IS NULL AND BPTaxID IS NOT NULL")
+				.append(" WHERE bp.Value=i.BPartnerValue AND bp.IsSummary='N' AND i.AD_Client_ID=bp.AD_Client_ID) ")
+				.append("WHERE C_BPartner_ID IS NULL AND (BPartnerValue IS NOT NULL AND LENGTH(TRIM(BPartnerValue)) > 0)")
+				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
+				.append(clientCheck); // Usa el filtro de usuario
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (log.isLoggable(Level.FINE))
+			log.fine("Set BPartner from SearchKey=" + no);
+
+		// 2. Intentar setear por RIF/CÉDULA (TaxID) - Si falló el anterior
+		sql = new StringBuilder("UPDATE I_GLJournal i ")
+				.append("SET C_BPartner_ID=(SELECT MAX(bp.C_BPartner_ID) FROM C_BPartner bp")
+				.append(" WHERE bp.TaxID=i.BPartnerValue AND bp.IsSummary='N' AND i.AD_Client_ID=bp.AD_Client_ID) ")
+				.append("WHERE C_BPartner_ID IS NULL AND (BPartnerValue IS NOT NULL AND LENGTH(TRIM(BPartnerValue)) > 0)")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.FINE))
 			log.fine("Set BPartner from TaxID=" + no);
+
+		// 3. MARCAR ERROR si no se encontró el ID (Validación estricta)
+		sql = new StringBuilder("UPDATE I_GLJournal i ").append(
+				"SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Tercero No Encontrado: '||i.BPartnerValue||', '")
+				.append("WHERE C_BPartner_ID IS NULL AND (BPartnerValue IS NOT NULL AND LENGTH(TRIM(BPartnerValue)) > 0)")
+				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
+				.append(clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (no != 0) {
+			commitEx();
+			log.warning("Invalid BPartner (Value)=" + no);
+		}
+		// 4. Validación extra para campo BPTaxID (si se usa esa columna específica)
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
-				.append("SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Invalid BPartner, '")
-				.append("WHERE C_BPartner_ID IS NULL AND BPTaxID IS NOT NULL")
+				.append("SET C_BPartner_ID=(SELECT MAX(bp.C_BPartner_ID) FROM C_BPartner bp")
+				.append(" WHERE bp.TaxID=i.BPTaxID AND bp.IsSummary='N' AND i.AD_Client_ID=bp.AD_Client_ID) ")
+				.append("WHERE C_BPartner_ID IS NULL AND (BPTaxID IS NOT NULL AND LENGTH(TRIM(BPTaxID)) > 0)")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 
-		if (no != 0)
-			log.warning("Invalid BPartner=" + no);
-
+		// Error para BPTaxID específico
+		sql = new StringBuilder("UPDATE I_GLJournal i ").append(
+				"SET I_IsImported='E', I_ErrorMsg=I_ErrorMsg||'ERR=Tercero No Encontrado (TaxID): '||i.BPTaxID||', '")
+				.append("WHERE C_BPartner_ID IS NULL AND (BPTaxID IS NOT NULL AND LENGTH(TRIM(BPTaxID)) > 0)")
+				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
+				.append(clientCheck);
+		no = DB.executeUpdate(sql.toString(), get_TrxName());
+		if (no != 0) {
+			commitEx();
+			log.warning("Invalid BPartner (TaxID)=" + no);
+		}
 		// Set Product
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
 				.append("SET M_Product_ID=(SELECT MAX(p.M_Product_ID) FROM M_Product p")
@@ -635,9 +694,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid Product=" + no);
-
+		}
 		// Set Project
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
 				.append("SET C_Project_ID=(SELECT MAX(p.C_Project_ID) FROM C_Project p")
@@ -654,9 +714,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid Project=" + no);
-
+		}
 		// tbayen: IDEMPIERE-539 Import GL Window does not allow Key Values for
 		// Activity, Campaign, Sales Region
 		// Set Campaign
@@ -675,9 +736,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid Campaign=" + no);
-
+		}
 		// Set Activity
 		sql = new StringBuilder("UPDATE I_GLJournal i ")
 				.append("SET C_Activity_ID=(SELECT MAX(p.C_Activity_ID) FROM C_Activity p")
@@ -733,11 +795,13 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid SalesRegion=" + no);
-
+		}
 		// Set TrxOrg
-		sql = new StringBuilder("UPDATE I_GLJournal i ").append("SET AD_OrgTrx_ID=(SELECT MAX(o.AD_Org_ID) FROM AD_Org o")
+		sql = new StringBuilder("UPDATE I_GLJournal i ")
+				.append("SET AD_OrgTrx_ID=(SELECT MAX(o.AD_Org_ID) FROM AD_Org o")
 				.append(" WHERE o.Value=i.OrgTrxValue AND o.IsSummary='N' AND i.AD_Client_ID=o.AD_Client_ID) ")
 				.append("WHERE AD_OrgTrx_ID IS NULL AND OrgTrxValue IS NOT NULL")
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
@@ -751,9 +815,10 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 				.append(" AND (C_ValidCombination_ID IS NULL OR C_ValidCombination_ID=0) AND I_IsImported<>'Y'")
 				.append(clientCheck);
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
-		if (no != 0)
+		if (no != 0) {
+			commitEx();
 			log.warning("Invalid OrgTrx=" + no);
-
+		}
 		// Source Amounts
 		sql = new StringBuilder("UPDATE I_GLJournal ").append("SET AmtSourceDr = 0 ")
 				.append("WHERE AmtSourceDr IS NULL").append(" AND I_IsImported<>'Y'").append(clientCheck);
@@ -899,220 +964,256 @@ if (test.get_ColumnIndex("SPIFileContent") > 0) {
 		// Go through Journal Records
 		sql = new StringBuilder("SELECT * FROM I_GLJournal ").append("WHERE I_IsImported='N'").append(clientCheck)
 				.append(" ORDER BY AD_Org_ID,TRUNC(DateAcct),COALESCE(BatchDocumentNo, I_GLJournal_ID::varchar), COALESCE(JournalDocumentNo, ")
-				.append("I_GLJournal_ID::varchar),	 C_AcctSchema_ID, PostingType, C_DocType_ID, GL_Category_ID, ")
+				.append("I_GLJournal_ID::varchar), C_AcctSchema_ID, PostingType, C_DocType_ID, GL_Category_ID, ")
 				.append("C_Currency_ID, Line, I_GLJournal_ID");
 		try {
 			pstmt = DB.prepareStatement(sql.toString(), get_TrxName());
 			rs = pstmt.executeQuery();
-			//
+
 			while (rs.next()) {
 				X_I_GLJournal imp = new X_I_GLJournal(getCtx(), rs, get_TrxName());
-				int Doc_BPartner_ID = 0;// rs.getInt("Doc_BPartner_ID");
-				// New Batch if Batch Document No changes
-				String impBatchDocumentNo = imp.getBatchDocumentNo();
-				if (impBatchDocumentNo == null)
-					impBatchDocumentNo = "";
-				if (imp.isCreateNewBatch() // line states to create a new batch
-						|| (journal != null && journal.getC_AcctSchema_ID() != imp.getC_AcctSchema_ID()) // new line
-																											// changed
-																											// schema
-						|| (imp.getBatchDocumentNo() == null && !wasCreateNewBatch) // new line doesn't have batch info
-						|| !BatchDocumentNo.equals(impBatchDocumentNo)) // batch number changed
-				{
-					// reset batch
-					batch = null;
-				}
 
-				if (imp.isCreateNewBatch())
-					wasCreateNewBatch = true;
+				// **** GIDEMPIERE: INICIO BLOQUE TRY-CATCH POR REGISTRO ****
+				try {
+					int Doc_BPartner_ID = 0;
 
-				if (imp.isCreateNewBatch() || (batch == null && imp.getBatchDocumentNo() != null)) {
-					BatchDocumentNo = impBatchDocumentNo; // cannot compare real DocumentNo
-					batch = new MJournalBatch(getCtx(), 0, get_TrxName());
-					batch.setClientOrg(imp.getAD_Client_ID(), imp.getAD_OrgDoc_ID());
-					if (imp.getBatchDocumentNo() != null && imp.getBatchDocumentNo().length() > 0)
-						batch.setDocumentNo(imp.getBatchDocumentNo());
-					batch.setC_DocType_ID(imp.getC_DocType_ID());
-					batch.setPostingType(imp.getPostingType());
-					StringBuilder description;
-					if (imp.getBatchDescription() == null || imp.getBatchDescription().toString().length() == 0)
-						description = new StringBuilder("*Import-");
-					else
-						description = new StringBuilder(imp.getBatchDescription()).append(" *Import-");
-					description.append(new Timestamp(System.currentTimeMillis()));
-					batch.setDescription(description.toString());
-					if (!batch.save()) {
-						log.log(Level.SEVERE, "Batch not saved");
-						Exception ex = CLogger.retrieveException();
-						if (ex != null) {
-							addLog(0, null, null, ex.getLocalizedMessage());
-							throw ex;
-						}
-						break;
+					// ... (Lógica de Lote / Batch igual al original) ...
+					String impBatchDocumentNo = imp.getBatchDocumentNo();
+					if (impBatchDocumentNo == null)
+						impBatchDocumentNo = "";
+
+					if (imp.isCreateNewBatch()
+							|| (journal != null && journal.getC_AcctSchema_ID() != imp.getC_AcctSchema_ID())
+							|| (imp.getBatchDocumentNo() == null && !wasCreateNewBatch)
+							|| !BatchDocumentNo.equals(impBatchDocumentNo)) {
+						batch = null;
 					}
-					noInsert++;
-					journal = null;
-				}
 
-				// Journal
-				String impJournalDocumentNo = imp.getJournalDocumentNo();
-				if (impJournalDocumentNo == null)
-					impJournalDocumentNo = "";
-				Timestamp impDateAcct = TimeUtil.getDay(imp.getDateAcct());
-				if (m_IsImportbyOrg) {
-					if (journal == null || imp.isCreateNewJournal() || prevOrgId != imp.getAD_Org_ID()
-							|| !JournalDocumentNo.equals(impJournalDocumentNo)
-							|| journal.getC_DocType_ID() != imp.getC_DocType_ID()
-							|| journal.getGL_Category_ID() != imp.getGL_Category_ID()
-							|| !journal.getPostingType().equals(imp.getPostingType())
-							|| journal.getC_Currency_ID() != imp.getC_Currency_ID()
-							|| journal.getAD_Org_ID() != imp.getAD_Org_ID() || !impDateAcct.equals(DateAcct)) {
-						JournalDocumentNo = impJournalDocumentNo; // cannot compare real DocumentNo
-						DateAcct = impDateAcct;
-						journal = new MJournal(getCtx(), 0, get_TrxName());
-						if (batch != null)
-							journal.setGL_JournalBatch_ID(batch.getGL_JournalBatch_ID());
-						journal.setClientOrg(imp.getAD_Client_ID(), imp.getAD_Org_ID());
-						//
-						String description = imp.getBatchDescription();
-						if (description == null || description.length() == 0)
-							description = "(Import)";
-						journal.setDescription(description);
-						if (imp.getJournalDocumentNo() != null && imp.getJournalDocumentNo().length() > 0)
-							journal.setDocumentNo(imp.getJournalDocumentNo());
-						//
-						journal.setC_AcctSchema_ID(imp.getC_AcctSchema_ID());
-						journal.setC_DocType_ID(imp.getC_DocType_ID());
-						journal.setGL_Category_ID(imp.getGL_Category_ID());
-						journal.setPostingType(imp.getPostingType());
-						journal.setGL_Budget_ID(imp.getGL_Budget_ID());
-						//
-						journal.setCurrency(imp.getC_Currency_ID(), imp.getC_ConversionType_ID(),
-								imp.getCurrencyRate());
-						//
-						journal.setC_Period_ID(imp.getC_Period_ID());
-						journal.setDateAcct(imp.getDateAcct()); // sets Period if not defined
-						journal.setDateDoc(imp.getDateAcct());
+					if (imp.isCreateNewBatch())
+						wasCreateNewBatch = true;
 
-						// set DocBPartner
-						if (Doc_BPartner_ID > 0)
-							journal.set_ValueOfColumn("C_BPartner_ID", Doc_BPartner_ID);
-						//
-						if (!journal.save()) {
-							log.log(Level.SEVERE, "Journal not saved");
-							Exception ex = CLogger.retrieveException();
-							if (ex != null) {
-								addLog(0, null, null, ex.getLocalizedMessage());
-								throw ex;
+					if (imp.isCreateNewBatch() || (batch == null && imp.getBatchDocumentNo() != null)) {
+						BatchDocumentNo = impBatchDocumentNo;
+						batch = new MJournalBatch(getCtx(), 0, get_TrxName());
+						batch.setClientOrg(imp.getAD_Client_ID(), imp.getAD_OrgDoc_ID());
+						if (imp.getBatchDocumentNo() != null && imp.getBatchDocumentNo().length() > 0)
+							batch.setDocumentNo(imp.getBatchDocumentNo());
+						batch.setC_DocType_ID(imp.getC_DocType_ID());
+						batch.setPostingType(imp.getPostingType());
+
+						// Descripción del Lote
+						StringBuilder description;
+						if (imp.getBatchDescription() == null || imp.getBatchDescription().toString().length() == 0)
+							description = new StringBuilder("*Import-");
+						else
+							description = new StringBuilder(imp.getBatchDescription()).append(" *Import-");
+						description.append(new Timestamp(System.currentTimeMillis()));
+						batch.setDescription(description.toString());
+
+						if (!batch.save()) {
+							String err = CLogger.retrieveErrorString("Batch not saved");
+							throw new Exception("Error al guardar Lote: " + err); // <--- CAMBIAR BREAK POR THROW
+						}
+						noInsert++;
+						journal = null;
+					}
+
+					// Journal
+					String impJournalDocumentNo = imp.getJournalDocumentNo();
+					if (impJournalDocumentNo == null)
+						impJournalDocumentNo = "";
+					Timestamp impDateAcct = TimeUtil.getDay(imp.getDateAcct());
+					if (m_IsImportbyOrg) {
+						if (journal == null || imp.isCreateNewJournal() || prevOrgId != imp.getAD_Org_ID()
+								|| !JournalDocumentNo.equals(impJournalDocumentNo)
+								|| journal.getC_DocType_ID() != imp.getC_DocType_ID()
+								|| journal.getGL_Category_ID() != imp.getGL_Category_ID()
+								|| !journal.getPostingType().equals(imp.getPostingType())
+								|| journal.getC_Currency_ID() != imp.getC_Currency_ID()
+								|| journal.getAD_Org_ID() != imp.getAD_Org_ID() || !impDateAcct.equals(DateAcct)) {
+							JournalDocumentNo = impJournalDocumentNo; // cannot compare real DocumentNo
+							DateAcct = impDateAcct;
+							journal = new MJournal(getCtx(), 0, get_TrxName());
+							if (batch != null)
+								journal.setGL_JournalBatch_ID(batch.getGL_JournalBatch_ID());
+							journal.setClientOrg(imp.getAD_Client_ID(), imp.getAD_Org_ID());
+							//
+							String description = imp.getBatchDescription();
+							if (description == null || description.length() == 0)
+								description = "(Import)";
+							journal.setDescription(description);
+							if (imp.getJournalDocumentNo() != null && imp.getJournalDocumentNo().length() > 0)
+								journal.setDocumentNo(imp.getJournalDocumentNo());
+							//
+							journal.setC_AcctSchema_ID(imp.getC_AcctSchema_ID());
+							journal.setC_DocType_ID(imp.getC_DocType_ID());
+							journal.setGL_Category_ID(imp.getGL_Category_ID());
+							journal.setPostingType(imp.getPostingType());
+							journal.setGL_Budget_ID(imp.getGL_Budget_ID());
+							//
+							journal.setCurrency(imp.getC_Currency_ID(), imp.getC_ConversionType_ID(),
+									imp.getCurrencyRate());
+							//
+							journal.setC_Period_ID(imp.getC_Period_ID());
+							journal.setDateAcct(imp.getDateAcct()); // sets Period if not defined
+							journal.setDateDoc(imp.getDateAcct());
+
+							// set DocBPartner
+							if (Doc_BPartner_ID > 0)
+								journal.set_ValueOfColumn("C_BPartner_ID", Doc_BPartner_ID);
+
+							// **************************************************************************
+							// [INICIO] MODIFICACIÓN GIDEMPIERE: VALIDACIÓN JOURNAL
+							// **************************************************************************
+							if (!journal.save()) {
+								// Recuperamos el último error del sistema
+								org.compiere.util.ValueNamePair vp = CLogger.retrieveError();
+								String msg = (vp != null) ? vp.getName()
+										: "Error desconocido al guardar el Encabezado (Journal)";
+
+								// Lanzamos la excepción para que el CATCH escriba este mensaje en I_ErrorMsg
+								throw new Exception(msg);
 							}
-							break;
-						}
-						prevOrgId = imp.getAD_Org_ID();
-						noInsertJournal++;
-					}
-				} else {
-					if (journal == null || imp.isCreateNewJournal() || !JournalDocumentNo.equals(impJournalDocumentNo)
-							|| journal.getC_DocType_ID() != imp.getC_DocType_ID()
-							|| journal.getGL_Category_ID() != imp.getGL_Category_ID()
-							|| !journal.getPostingType().equals(imp.getPostingType())
-							|| journal.getC_Currency_ID() != imp.getC_Currency_ID() || !impDateAcct.equals(DateAcct)) {
-						JournalDocumentNo = impJournalDocumentNo; // cannot compare real DocumentNo
-						DateAcct = impDateAcct;
-						journal = new MJournal(getCtx(), 0, get_TrxName());
-						if (batch != null)
-							journal.setGL_JournalBatch_ID(batch.getGL_JournalBatch_ID());
-						journal.setClientOrg(imp.getAD_Client_ID(), imp.getAD_Org_ID());
-						//
-						String description = imp.getBatchDescription();
-						if (description == null || description.length() == 0)
-							description = "(Import)";
-						journal.setDescription(description);
-						if (imp.getJournalDocumentNo() != null && imp.getJournalDocumentNo().length() > 0)
-							journal.setDocumentNo(imp.getJournalDocumentNo());
-						//
-						journal.setC_AcctSchema_ID(imp.getC_AcctSchema_ID());
-						journal.setC_DocType_ID(imp.getC_DocType_ID());
-						journal.setGL_Category_ID(imp.getGL_Category_ID());
-						journal.setPostingType(imp.getPostingType());
-						journal.setGL_Budget_ID(imp.getGL_Budget_ID());
-						//
-						journal.setCurrency(imp.getC_Currency_ID(), imp.getC_ConversionType_ID(),
-								imp.getCurrencyRate());
-						//
-						journal.setC_Period_ID(imp.getC_Period_ID());
-						journal.setDateAcct(imp.getDateAcct()); // sets Period if not defined
-						journal.setDateDoc(imp.getDateAcct());
+							// **************************************************************************
 
-						// set DocBPartner
-						if (Doc_BPartner_ID > 0)
-							journal.set_ValueOfColumn("C_BPartner_ID", Doc_BPartner_ID);
-						//
-						if (!journal.save()) {
-							log.log(Level.SEVERE, "Journal not saved");
-							Exception ex = CLogger.retrieveException();
-							if (ex != null) {
-								addLog(0, null, null, ex.getLocalizedMessage());
-								throw ex;
-							}
-							break;
+							prevOrgId = imp.getAD_Org_ID();
+							noInsertJournal++;
 						}
-						prevOrgId = imp.getAD_Org_ID();
-						noInsertJournal++;
-					}
-				}
-
-				// Lines
-				MJournalLine line = new MJournalLine(journal);
-				//
-				line.setDescription(imp.getDescription());
-				line.setCurrency(imp.getC_Currency_ID(), imp.getC_ConversionType_ID(), imp.getCurrencyRate());
-				// Set/Get Account Combination
-				if (imp.getC_ValidCombination_ID() == 0) {
-					MAccount acct = MAccount.get(getCtx(), imp.getAD_Client_ID(), imp.getAD_Org_ID(),
-							imp.getC_AcctSchema_ID(), imp.getAccount_ID(), 0, imp.getM_Product_ID(),
-							imp.getC_BPartner_ID(), imp.getAD_OrgTrx_ID(), imp.getC_LocFrom_ID(), imp.getC_LocTo_ID(),
-							imp.getC_SalesRegion_ID(), imp.getC_Project_ID(), imp.getC_Campaign_ID(),
-							imp.getC_Activity_ID(), imp.getUser1_ID(), imp.getUser2_ID(), 0, 0, get_TrxName());
-					if (acct != null && acct.get_ID() == 0)
-						acct.saveEx();
-					if (acct == null || acct.get_ID() == 0) {
-						imp.setI_ErrorMsg("ERROR creating Account");
-						imp.setI_IsImported(false);
-						imp.saveEx();
-						continue;
 					} else {
-						line.setC_ValidCombination_ID(acct.get_ID());
-						imp.setC_ValidCombination_ID(acct.get_ID());
-					}
-				} else
-					line.setC_ValidCombination_ID(imp.getC_ValidCombination_ID());
-				//
-				line.setLine(imp.getLine());
+						if (journal == null || imp.isCreateNewJournal()
+								|| !JournalDocumentNo.equals(impJournalDocumentNo)
+								|| journal.getC_DocType_ID() != imp.getC_DocType_ID()
+								|| journal.getGL_Category_ID() != imp.getGL_Category_ID()
+								|| !journal.getPostingType().equals(imp.getPostingType())
+								|| journal.getC_Currency_ID() != imp.getC_Currency_ID()
+								|| !impDateAcct.equals(DateAcct)) {
+							JournalDocumentNo = impJournalDocumentNo; // cannot compare real DocumentNo
+							DateAcct = impDateAcct;
+							journal = new MJournal(getCtx(), 0, get_TrxName());
+							if (batch != null)
+								journal.setGL_JournalBatch_ID(batch.getGL_JournalBatch_ID());
+							journal.setClientOrg(imp.getAD_Client_ID(), imp.getAD_Org_ID());
+							//
+							String description = imp.getBatchDescription();
+							if (description == null || description.length() == 0)
+								description = "(Import)";
+							journal.setDescription(description);
+							if (imp.getJournalDocumentNo() != null && imp.getJournalDocumentNo().length() > 0)
+								journal.setDocumentNo(imp.getJournalDocumentNo());
+							//
+							journal.setC_AcctSchema_ID(imp.getC_AcctSchema_ID());
+							journal.setC_DocType_ID(imp.getC_DocType_ID());
+							journal.setGL_Category_ID(imp.getGL_Category_ID());
+							journal.setPostingType(imp.getPostingType());
+							journal.setGL_Budget_ID(imp.getGL_Budget_ID());
+							//
+							journal.setCurrency(imp.getC_Currency_ID(), imp.getC_ConversionType_ID(),
+									imp.getCurrencyRate());
+							//
+							journal.setC_Period_ID(imp.getC_Period_ID());
+							journal.setDateAcct(imp.getDateAcct()); // sets Period if not defined
+							journal.setDateDoc(imp.getDateAcct());
 
-				line.setAmtSourceCr(imp.getAmtSourceCr());
-				line.setAmtSourceDr(imp.getAmtSourceDr());
-				// line.setAmtAcct (imp.getAmtAcctDr(), imp.getAmtAcctCr()); // only if not 0
-				line.setAmtAcctCr(imp.getAmtAcctCr());
-				line.setAmtAcctDr(imp.getAmtAcctDr());
-				line.setCurrencyRate(imp.getCurrencyRate());
-				line.setDateAcct(imp.getDateAcct());
-				if (imp.get_ValueAsInt("C_Activity_ID") > 0)
-					line.setC_Activity_ID(imp.get_ValueAsInt("C_Activity_ID"));// new fields
-				if (imp.get_ValueAsInt("User1_ID") > 0)
-					line.setUser1_ID(imp.get_ValueAsInt("User1_ID"));// new fields
-				//
-				line.setC_UOM_ID(imp.getC_UOM_ID());
-				line.setQty(imp.getQty());
-				//
-				if (line.save()) {
-					if (batch != null)
-						imp.setGL_JournalBatch_ID(batch.getGL_JournalBatch_ID());
-					imp.setGL_Journal_ID(journal.getGL_Journal_ID());
-					imp.setGL_JournalLine_ID(line.getGL_JournalLine_ID());
-					imp.setI_IsImported(true);
-					imp.setProcessed(true);
-					if (imp.save())
-						noInsertLine++;
+							// set DocBPartner
+							if (Doc_BPartner_ID > 0)
+								journal.set_ValueOfColumn("C_BPartner_ID", Doc_BPartner_ID);
+
+							// **************************************************************************
+							// [INICIO] MODIFICACIÓN GIDEMPIERE: VALIDACIÓN JOURNAL
+							// **************************************************************************
+							if (!journal.save()) {
+								// Recuperamos el último error del sistema
+								org.compiere.util.ValueNamePair vp = CLogger.retrieveError();
+								String msg = (vp != null) ? vp.getName()
+										: "Error desconocido al guardar el Encabezado (Journal)";
+
+								// Lanzamos la excepción para que el CATCH escriba este mensaje en I_ErrorMsg
+								throw new Exception(msg);
+							}
+							// **************************************************************************
+
+							prevOrgId = imp.getAD_Org_ID();
+							noInsertJournal++;
+						}
+					}
+
+					// Lines
+					MJournalLine line = new MJournalLine(journal);
+					//
+					line.setDescription(imp.getDescription());
+					line.setCurrency(imp.getC_Currency_ID(), imp.getC_ConversionType_ID(), imp.getCurrencyRate());
+					// Set/Get Account Combination
+					if (imp.getC_ValidCombination_ID() == 0) {
+						MAccount acct = MAccount.get(getCtx(), imp.getAD_Client_ID(), imp.getAD_Org_ID(),
+								imp.getC_AcctSchema_ID(), imp.getAccount_ID(), 0, imp.getM_Product_ID(),
+								imp.getC_BPartner_ID(), imp.getAD_OrgTrx_ID(), imp.getC_LocFrom_ID(),
+								imp.getC_LocTo_ID(), imp.getC_SalesRegion_ID(), imp.getC_Project_ID(),
+								imp.getC_Campaign_ID(), imp.getC_Activity_ID(), imp.getUser1_ID(), imp.getUser2_ID(), 0,
+								0, get_TrxName());
+						if (acct != null && acct.get_ID() == 0)
+							acct.saveEx();
+						if (acct == null || acct.get_ID() == 0) {
+							imp.setI_ErrorMsg("ERROR creating Account");
+							imp.setI_IsImported(false);
+							imp.saveEx();
+							continue;
+						} else {
+							line.setC_ValidCombination_ID(acct.get_ID());
+							imp.setC_ValidCombination_ID(acct.get_ID());
+						}
+					} else
+						line.setC_ValidCombination_ID(imp.getC_ValidCombination_ID());
+					//
+					line.setLine(imp.getLine());
+
+					line.setAmtSourceCr(imp.getAmtSourceCr());
+					line.setAmtSourceDr(imp.getAmtSourceDr());
+					// line.setAmtAcct (imp.getAmtAcctDr(), imp.getAmtAcctCr()); // only if not 0
+					line.setAmtAcctCr(imp.getAmtAcctCr());
+					line.setAmtAcctDr(imp.getAmtAcctDr());
+					line.setCurrencyRate(imp.getCurrencyRate());
+					line.setDateAcct(imp.getDateAcct());
+					if (imp.get_ValueAsInt("C_Activity_ID") > 0)
+						line.setC_Activity_ID(imp.get_ValueAsInt("C_Activity_ID"));// new fields
+					if (imp.get_ValueAsInt("User1_ID") > 0)
+						line.setUser1_ID(imp.get_ValueAsInt("User1_ID"));// new fields
+					//
+					line.setC_UOM_ID(imp.getC_UOM_ID());
+					line.setQty(imp.getQty());
+					//
+					if (line.save()) {
+						// ÉXITO: Vinculamos los IDs generados a la tabla de importación
+						if (batch != null)
+							imp.setGL_JournalBatch_ID(batch.getGL_JournalBatch_ID());
+
+						imp.setGL_Journal_ID(journal.getGL_Journal_ID());
+						imp.setGL_JournalLine_ID(line.getGL_JournalLine_ID());
+
+						// Marcamos como importado exitosamente
+						imp.setI_IsImported(true);
+						imp.setI_ErrorMsg(null); // Limpiamos errores previos
+						imp.setProcessed(true);
+
+						if (imp.save())
+							noInsertLine++;
+
+					} else {
+						// ERROR: Recuperamos el mensaje exacto de por qué falló la línea
+						org.compiere.util.ValueNamePair vp = CLogger.retrieveError();
+						String msg = (vp != null) ? vp.getName() : "Error desconocido al guardar la Línea";
+
+						// Lanzamos la excepción para que el CATCH escriba este mensaje en I_ErrorMsg
+						throw new Exception(msg);
+					}
+				} catch (Exception e) {
+					// **************************************************************************
+					// [INICIO] CAPTURA DE ERROR Y SETEO EN BASE DE DATOS
+					// **************************************************************************
+					log.log(Level.SEVERE, "Error en Importación ID: " + imp.getI_GLJournal_ID(), e);
+					imp.setI_IsImported(false);
+					imp.setI_ErrorMsg(e.getMessage() != null ? e.getMessage() : e.toString());
+					imp.saveEx(); // Guardamos el error y continuamos con el siguiente registro
+					// **************************************************************************
 				}
 			} // while records
 		} catch (Exception e) {
