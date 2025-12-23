@@ -49,6 +49,8 @@ public class ImportProductBOM extends CustomProcess {
 	private boolean isImported = false;
 	private int imported = 0;
 
+	private java.util.Set<Integer> m_cleanedBOMs = new java.util.HashSet<Integer>();
+	
 	@Override
 	protected void prepare() {
 		ProcessInfoParameter[] parameters = getParameter();
@@ -85,17 +87,14 @@ public class ImportProductBOM extends CustomProcess {
 	 * fill IDs values based on Search Key
 	 **/
 	private void fillIDValues() {
-		for (X_I_Product_BOM importBOM : getRecords(false,
-				m_IsImportOnlyNoErrors)) {
+		for (X_I_Product_BOM importBOM : getRecords(false, m_IsImportOnlyNoErrors)) {
 			// Validate Organization
 			int AD_Org_ID = 0;
 			if (importBOM.getAD_Org_ID() > 0)
-				AD_Org_ID = getID(MOrg.Table_Name, "AD_Org_ID = ?",
-						new Object[] { importBOM.getAD_Org_ID() });
+				AD_Org_ID = getID(MOrg.Table_Name, "AD_Org_ID = ?", new Object[] { importBOM.getAD_Org_ID() });
 
 			if (AD_Org_ID < 0 && importBOM.getOrgValue() != null) {
-				AD_Org_ID = getID(MOrg.Table_Name, "Value = ?",
-						new Object[] { importBOM.getOrgValue() });
+				AD_Org_ID = getID(MOrg.Table_Name, "Value = ?", new Object[] { importBOM.getOrgValue() });
 				importBOM.setAD_Org_ID(AD_Org_ID);
 			} else
 				importBOM.setAD_Org_ID(AD_Org_ID);
@@ -107,8 +106,7 @@ public class ImportProductBOM extends CustomProcess {
 						new Object[] { importBOM.getM_Product_ID() });
 
 			if (M_Product_ID <= 0 && importBOM.getProductValue() != null) {
-				M_Product_ID = getID(MProduct.Table_Name, "Value=?",
-						new Object[] { importBOM.getProductValue() });
+				M_Product_ID = getID(MProduct.Table_Name, "Value=?", new Object[] { importBOM.getProductValue() });
 			}
 			importBOM.setM_Product_ID(M_Product_ID); // header
 
@@ -127,35 +125,50 @@ public class ImportProductBOM extends CustomProcess {
 			// Validate UOM
 			int C_UOM_ID = 0;
 			if (importBOM.getC_UOM_ID() > 0)
-				C_UOM_ID = getID(MUOM.Table_Name, "C_UOM_ID=?",
-						new Object[] { importBOM.getC_UOM_ID() });
+				C_UOM_ID = getID(MUOM.Table_Name, "C_UOM_ID=?", new Object[] { importBOM.getC_UOM_ID() });
 
 			if (C_UOM_ID <= 0 && importBOM.getX12DE355() != null) {
-				C_UOM_ID = getID(MUOM.Table_Name, "X12DE355=?",
-						new Object[] { importBOM.getX12DE355() });				
+				C_UOM_ID = getID(MUOM.Table_Name, "X12DE355=?", new Object[] { importBOM.getX12DE355() });
 			}
 			importBOM.setC_UOM_ID(C_UOM_ID); // uom code
-			//  Modified by Joaquin Mora, 2024-11-27
-			//  Sets the Resource and Workflow
+			// Modified by Joaquin Mora, 2024-11-27
+			// Sets the Resource and Workflow
 			int AD_Workflow_ID = 0;
-	        if (importBOM.get_ValueAsString("WorkflowValue")!= null) {
-	            AD_Workflow_ID = getID("AD_Workflow", "Value =?", new Object[] { importBOM.get_ValueAsString("WorkflowValue") });
-	        }
-	        if(AD_Workflow_ID>0)
-	        	importBOM.set_ValueOfColumn("AD_Workflow_ID", AD_Workflow_ID);
-	        
-	        int S_Resource_ID = 0;
-	        if (importBOM.get_ValueAsString("ResourceValue") != null) {
-	            S_Resource_ID = getID("S_Resource", "Value=?", new Object[] { importBOM.get_ValueAsString("ResourceValue") });
-	        }
-	        if(S_Resource_ID>0)
-	        	importBOM.set_ValueOfColumn("S_Resource_ID", S_Resource_ID);
-	        if(S_Resource_ID<=0 && AD_Workflow_ID>0) {
-	        	MWorkflow wf = new MWorkflow(getCtx(), AD_Workflow_ID, get_TrxName());
-	        	importBOM.set_ValueOfColumn("S_Resource_ID", wf.getS_Resource_ID());
-	        }
-	        //	End Joaquin Mora
-	        
+			if (importBOM.get_ValueAsString("WorkflowValue") != null) {
+				AD_Workflow_ID = getID("AD_Workflow", "Value =?",
+						new Object[] { importBOM.get_ValueAsString("WorkflowValue") });
+			}
+			if (AD_Workflow_ID > 0)
+				importBOM.set_ValueOfColumn("AD_Workflow_ID", AD_Workflow_ID);
+
+			int S_Resource_ID = 0;
+			if (importBOM.get_ValueAsString("ResourceValue") != null) {
+				S_Resource_ID = getID("S_Resource", "Value=?",
+						new Object[] { importBOM.get_ValueAsString("ResourceValue") });
+			}
+			if (S_Resource_ID > 0)
+				importBOM.set_ValueOfColumn("S_Resource_ID", S_Resource_ID);
+			if (S_Resource_ID <= 0 && AD_Workflow_ID > 0) {
+				MWorkflow wf = new MWorkflow(getCtx(), AD_Workflow_ID, get_TrxName());
+				importBOM.set_ValueOfColumn("S_Resource_ID", wf.getS_Resource_ID());
+			}
+			// End Joaquin Mora
+
+			int M_LocatorTo_ID = 0;
+			
+			if (importBOM.get_ValueAsInt("M_LocatorTo_ID") > 0) {
+				M_LocatorTo_ID = importBOM.get_ValueAsInt("M_LocatorTo_ID");
+			}
+			
+			if (M_LocatorTo_ID <= 0 && importBOM.get_ValueAsString("LocatorToValue") != null) {
+				String val = importBOM.get_ValueAsString("LocatorToValue");
+				M_LocatorTo_ID = getID("M_Locator", "Value=?", new Object[] { val });
+			}
+
+			if (M_LocatorTo_ID > 0) {
+				importBOM.set_ValueOfColumn("M_LocatorTo_ID", M_LocatorTo_ID);
+			}
+
 			StringBuffer err = new StringBuffer("");
 			if (importBOM.getAD_Org_ID() < 0)
 				err.append(" @AD_Org_ID@ @NotFound@,");
@@ -167,108 +180,140 @@ public class ImportProductBOM extends CustomProcess {
 				err.append(" @FillMandatory@ @DocumentNo@");
 
 			if (err.toString() != null && err.toString().length() > 0) {
-				importBOM.setI_ErrorMsg(Msg.parseTranslation(getCtx(),
-						err.toString()));
+				importBOM.setI_ErrorMsg(Msg.parseTranslation(getCtx(), err.toString()));
 			}
-			
+
 			importBOM.saveEx();
 		}
-		
+
 	}
 
 	/**
 	 * import the I_Product_BOM records to PP_ProductBOM table
 	 */
 	private void importRecords() {
-		for (X_I_Product_BOM importBOM : getRecords(false,
-				m_IsImportOnlyNoErrors)) {
+
+		m_cleanedBOMs.clear();
+
+		for (X_I_Product_BOM importBOM : getRecords(false, m_IsImportOnlyNoErrors)) {
+
 			isImported = false;
-			MPPProductBOM bom = getMPPProductBOM(importBOM);
+			MPPProductBOM bom = getMPPProductBOM(importBOM); 
 			MPPProductBOMLine bomLine = null;
-			int AD_Workflow_ID = importBOM.get_ValueAsInt("AD_Workflow_ID");
-			if(AD_Workflow_ID>0)
-				bom.set_ValueOfColumn("AD_Workflow_ID", AD_Workflow_ID);
-	        int S_Resource_ID = importBOM.get_ValueAsInt("S_Resource_ID");
-	        if(S_Resource_ID>0)
-	        	bom.set_ValueOfColumn("S_Resource_ID", S_Resource_ID);
-			if (bom != null)
+
+			if (bom != null) {
+
+				if (!m_cleanedBOMs.contains(bom.getPP_Product_BOM_ID())) {
+					
+					int bomID = bom.getPP_Product_BOM_ID();
+				    String trxName = get_TrxName();
+
+				    // 1. Borrar Traducciones (El error actual: _trl)
+				    // Buscamos las traducciones de las líneas que pertenecen a esta BOM y las borramos
+				    String sqlDeleteTrl = "DELETE FROM PP_Product_BOMLine_Trl WHERE PP_Product_BOMLine_ID IN " +
+				                          "(SELECT PP_Product_BOMLine_ID FROM PP_Product_BOMLine WHERE PP_Product_BOM_ID=?)";
+				    DB.executeUpdate(sqlDeleteTrl, bomID, trxName);
+
+				    // 2. Desvincular referencias en la tabla de Importación (El error anterior)
+				    String sqlUnlinkImport = "UPDATE I_Product_BOM SET PP_Product_BOMLine_ID = NULL WHERE PP_Product_BOMLine_ID IN " +
+				                             "(SELECT PP_Product_BOMLine_ID FROM PP_Product_BOMLine WHERE PP_Product_BOM_ID=?)";
+				    DB.executeUpdate(sqlUnlinkImport, bomID, trxName);
+
+				    // 3. Borrar las Líneas Maestras (El objetivo final)
+				    String sqlDeleteMaster = "DELETE FROM PP_Product_BOMLine WHERE PP_Product_BOM_ID=?";
+				    int deleted = DB.executeUpdate(sqlDeleteMaster, bomID, trxName);
+				    
+				    log.info("LIMPIEZA TOTAL LDM: " + bom.getValue() + " - Líneas borradas: " + deleted);
+				    
+				    // Marcamos para no repetir en este lote
+				    m_cleanedBOMs.add(bomID);
+					
+				}
+
+				int AD_Workflow_ID = importBOM.get_ValueAsInt("AD_Workflow_ID");
+				if (AD_Workflow_ID > 0)
+					bom.set_ValueOfColumn("AD_Workflow_ID", AD_Workflow_ID);
+
+				int S_Resource_ID = importBOM.get_ValueAsInt("S_Resource_ID");
+				if (S_Resource_ID > 0)
+					bom.set_ValueOfColumn("S_Resource_ID", S_Resource_ID);
+
+				bom.saveEx();
+
 				bomLine = importBOMLine(bom, importBOM);
+			}
+
 			if (bomLine != null) {
 				importBOM.setPP_Product_BOMLine_ID(bomLine.getPP_Product_BOMLine_ID());
 				importBOM.setPP_Product_BOM_ID(bom.get_ID());
 				imported++;
 				isImported = true;
-			}else {
-				bomLine = getProductBOMLine(bom, importBOM);
-				importBOM.setPP_Product_BOMLine_ID(bomLine.getPP_Product_BOMLine_ID());
-				importBOM.setPP_Product_BOM_ID(bom.get_ID());
-				imported++;
-				isImported = true;
 			}
-			
+
+
 			importBOM.setI_IsImported(isImported);
 			importBOM.setProcessed(isImported);
 			importBOM.saveEx();
+
 		}
 	}
 
 	/**
 	 * Get Product BOM, if it does not exist then create it
 	 * 
-	 * @param importBOM
-	 *            I_Product_BOM
+	 * @param importBOM I_Product_BOM
 	 * @return MPPProductBOM Product BOM
 	 */
 	private MPPProductBOM getMPPProductBOM(X_I_Product_BOM importBOM) {
-		final String whereClause = I_I_Product_BOM.COLUMNNAME_M_Product_ID
-				+ "=? AND " + I_I_Product_BOM.COLUMNNAME_Value + "=?";
+		final String whereClause = I_I_Product_BOM.COLUMNNAME_M_Product_ID + "=? AND "
+				+ I_I_Product_BOM.COLUMNNAME_Value + "=?";
 
-		MPPProductBOM bom = new Query(Env.getCtx(), MPPProductBOM.Table_Name,
-				whereClause, get_TrxName())
-				.setClient_ID()
-				.setParameters(importBOM.getM_Product_ID(),
-						importBOM.getValue()).firstOnly();
+		MPPProductBOM bom = new Query(Env.getCtx(), MPPProductBOM.Table_Name, whereClause, get_TrxName()).setClient_ID()
+				.setParameters(importBOM.getM_Product_ID(), importBOM.getValue()).firstOnly();
 
 		if (bom == null) {
 			bom = new MPPProductBOM(Env.getCtx(), 0, get_TrxName());
 			bom.setAD_Org_ID(importBOM.getAD_Org_ID());
 			bom.setM_Product_ID(importBOM.getM_Product_ID());
-			bom.setValue(((importBOM.getValue() == null || importBOM.getValue().isEmpty())? importBOM.getM_Product().getValue():importBOM.getValue()));
+			bom.setValue(((importBOM.getValue() == null || importBOM.getValue().isEmpty())
+					? importBOM.getM_Product().getValue()
+					: importBOM.getValue()));
 		}
 
-		bom.setName((importBOM.getName() == null || importBOM.getName().isEmpty())? importBOM.getM_Product().getName():importBOM.getName());
-		
+		bom.setName((importBOM.getName() == null || importBOM.getName().isEmpty()) ? importBOM.getM_Product().getName()
+				: importBOM.getName());
+
 		if (importBOM.getValidFrom() != null)
-		bom.setValidFrom(importBOM.getValidFrom());
-		
+			bom.setValidFrom(importBOM.getValidFrom());
+
 		if (importBOM.getValidTo() != null)
-		bom.setValidTo(importBOM.getValidTo());
-		
-		if(importBOM.getBOMType() != null)
-		bom.setBOMType(importBOM.getBOMType());
-		
-		if(importBOM.getBOMUse() != null)
-		bom.setBOMUse(importBOM.getBOMUse());
-		
+			bom.setValidTo(importBOM.getValidTo());
+
+		if (importBOM.getBOMType() != null)
+			bom.setBOMType(importBOM.getBOMType());
+
+		if (importBOM.getBOMUse() != null)
+			bom.setBOMUse(importBOM.getBOMUse());
+
 		if (importBOM.getDescription() != null)
-		bom.setDescription(importBOM.getDescription());
-		
+			bom.setDescription(importBOM.getDescription());
+
 		if (importBOM.getDocumentNo() != null)
-		bom.set_ValueOfColumn("DocumentNo", importBOM.getDocumentNo());
-		
+			bom.set_ValueOfColumn("DocumentNo", importBOM.getDocumentNo());
+
 		if (importBOM.getHelp() != null)
-		bom.setHelp(importBOM.getHelp());
-		//	Modified by Jorge Colmenarez, 2021-08-30 15:55
-		//	Fixed bug when set ProductionQty
+			bom.setHelp(importBOM.getHelp());
+		// Modified by Jorge Colmenarez, 2021-08-30 15:55
+		// Fixed bug when set ProductionQty
 		bom.set_ValueOfColumn("ProductionQty", importBOM.get_Value("ProductionQty"));
-		//	End Jorge Colmenarez
+		// End Jorge Colmenarez
 		bom.setC_UOM_ID(importBOM.getM_Product().getC_UOM_ID());
-		//  Modified by Joaquin Mora, 2024-11-27
-		if(importBOM.get_ValueAsInt("AD_Workflow_ID")>0)
+		// Modified by Joaquin Mora, 2024-11-27
+		if (importBOM.get_ValueAsInt("AD_Workflow_ID") > 0)
 			bom.set_ValueOfColumn("AD_Workflow_ID", importBOM.get_ValueAsInt("AD_Workflow_ID"));
-		if(importBOM.get_ValueAsInt("S_Resource_ID")>0)
+		if (importBOM.get_ValueAsInt("S_Resource_ID") > 0)
 			bom.set_ValueOfColumn("S_Resource_ID", importBOM.get_ValueAsInt("S_Resource_ID"));
-		//	End Joaquin Mora
+		// End Joaquin Mora
 		bom.saveEx();
 
 		return bom;
@@ -277,20 +322,16 @@ public class ImportProductBOM extends CustomProcess {
 	/**
 	 * Import or update an existent BOM Line
 	 * 
-	 * @param bom
-	 *            Product BOM
-	 * @param importBOM
-	 *            Import Product BOM
+	 * @param bom       Product BOM
+	 * @param importBOM Import Product BOM
 	 * @return MPPProductBOMLine if is imported
 	 */
-	private MPPProductBOMLine importBOMLine(MPPProductBOM bom,
-			X_I_Product_BOM importBOM) {
+	private MPPProductBOMLine importBOMLine(MPPProductBOM bom, X_I_Product_BOM importBOM) {
 		// Search a BOM Line if not exist create a new based on import record
 		MPPProductBOMLine bomLine = getProductBOMLine(bom, importBOM);
 		// Component
-		MProduct component = new MProduct(Env.getCtx(),
-				importBOM.getM_BOMProduct_ID(), get_TrxName());
-		
+		MProduct component = new MProduct(Env.getCtx(), importBOM.getM_BOMProduct_ID(), get_TrxName());
+
 		if (bomLine == null) {
 			bomLine = new MPPProductBOMLine(Env.getCtx(), 0, get_TrxName());
 			bomLine.setAD_Org_ID(importBOM.getAD_Org_ID());
@@ -299,52 +340,63 @@ public class ImportProductBOM extends CustomProcess {
 		}
 		if (importBOM.getComponentType() != null)
 			bomLine.setComponentType(importBOM.getComponentType());
-		
+
 		if (importBOM.getQtyBOM() != null)
 			bomLine.setQtyBOM(importBOM.getQtyBOM());
-		
+
 		if (importBOM.getQtyBatch() != null)
 			bomLine.setQtyBatch(importBOM.getQtyBatch());
-		
+
 		if (importBOM.getIssueMethod() != null)
 			bomLine.setIssueMethod(importBOM.getIssueMethod());
-		
+
 		bomLine.setIsQtyPercentage(importBOM.isQtyPercentage());
-		
+
 		if (importBOM.getValidFrom() != null)
 			bomLine.setValidFrom(importBOM.getValidFrom());
-		
+
 		if (importBOM.getM_ChangeNotice_ID() > 0)
 			bomLine.setM_ChangeNotice_ID(importBOM.getM_ChangeNotice_ID());
-		
+
 		bomLine.setIsCritical(importBOM.isCritical());
-		
+
 		if (importBOM.getCostAllocationPerc() != null)
 			bomLine.setCostAllocationPerc(importBOM.getCostAllocationPerc());
-		
+
 		if (importBOM.getScrap() != null)
 			bomLine.setScrap(importBOM.getScrap());
-		
+
 		if (importBOM.getAssay() != null)
 			bomLine.setAssay(importBOM.getAssay());
-		
+
 		if (importBOM.getBackflushGroup() != null)
 			bomLine.setBackflushGroup(importBOM.getBackflushGroup());
-		
+
 		if (importBOM.getLeadTimeOffset() > 0)
 			bomLine.setLeadTimeOffset(importBOM.getLeadTimeOffset());
-		
+
 		if (importBOM.getC_UOM_ID() > 0)
 			bomLine.setC_UOM_ID(importBOM.getC_UOM_ID());
 		else
 			bomLine.setC_UOM_ID(component.getC_UOM_ID());
-		
+
 		bomLine.setDescription(component.getName());
-		
-		//	Support for Derivated
+
+		// Support for Derivated
 		bomLine.set_ValueOfColumn("IsCritical", importBOM.get_ValueAsBoolean("IsCritical"));
-		if(importBOM.getComponentType().equals(X_I_Product_BOM.COMPONENTTYPE_Variant))
+
+		if (X_I_Product_BOM.COMPONENTTYPE_Variant.equals(importBOM.getComponentType())) {
+
 			bomLine.set_ValueOfColumn("IsDerivative", true);
+
+			int locatorToID = importBOM.get_ValueAsInt("M_LocatorTo_ID");
+			if (locatorToID > 0) {
+				bomLine.set_ValueOfColumn("M_LocatorTo_ID", locatorToID);
+			} else {
+
+				bomLine.set_ValueOfColumn("M_LocatorTo_ID", null);
+			}
+		}
 		bomLine.saveEx();
 		return bomLine;
 	}
@@ -352,68 +404,58 @@ public class ImportProductBOM extends CustomProcess {
 	/**
 	 * get the BOM Line
 	 * 
-	 * @param bom
-	 *            Product BOM
-	 * @param importBOM
-	 *            Import Product BOM
+	 * @param bom       Product BOM
+	 * @param importBOM Import Product BOM
 	 * @return MPPProductBOMLine if exist
 	 */
-	private MPPProductBOMLine getProductBOMLine(MPPProductBOM bom,
-			X_I_Product_BOM importBOM) {
+	private MPPProductBOMLine getProductBOMLine(MPPProductBOM bom, X_I_Product_BOM importBOM) {
 
-		final String whereClause = MPPProductBOMLine.COLUMNNAME_PP_Product_BOM_ID
-				+ "=? AND "
-				+ MPPProductBOMLine.COLUMNNAME_M_Product_ID
-				+ "=? AND "
-				+ MPPProductBOMLine.COLUMNNAME_BackflushGroup
-				+ "=?";
+		// Corrección sugerida por GiDempiere
+		String whereClause = MPPProductBOMLine.COLUMNNAME_PP_Product_BOM_ID + "=? AND "
+				+ MPPProductBOMLine.COLUMNNAME_M_Product_ID + "=? ";
 
-		return new Query(Env.getCtx(), MPPProductBOMLine.Table_Name,
-				whereClause, get_TrxName())
-				.setClient_ID()
-				.setParameters(bom.getPP_Product_BOM_ID(),
-						importBOM.getM_BOMProduct_ID(),
-						importBOM.getBackflushGroup()).first();
+		// Verificamos si viene grupo de backflush
+		if (importBOM.getBackflushGroup() != null && importBOM.getBackflushGroup().length() > 0) {
+			whereClause += " AND " + MPPProductBOMLine.COLUMNNAME_BackflushGroup + "=?";
+			return new Query(Env.getCtx(), MPPProductBOMLine.Table_Name, whereClause, get_TrxName()).setParameters(
+					bom.getPP_Product_BOM_ID(), importBOM.getM_BOMProduct_ID(), importBOM.getBackflushGroup()).first();
+		} else {
+			// Si es nulo, buscamos explícitamente donde sea NULL
+			whereClause += " AND " + MPPProductBOMLine.COLUMNNAME_BackflushGroup + " IS NULL";
+			return new Query(Env.getCtx(), MPPProductBOMLine.Table_Name, whereClause, get_TrxName())
+					.setParameters(bom.getPP_Product_BOM_ID(), importBOM.getM_BOMProduct_ID()).first();
+		}
+
 	}
 
 	/**
 	 * get a record's ID
 	 * 
-	 * @param tableName
-	 *            String
-	 * @param whereClause
-	 *            String
-	 * @param values
-	 *            Object[]
+	 * @param tableName   String
+	 * @param whereClause String
+	 * @param values      Object[]
 	 * @return unique record's ID in the table
 	 */
 	private int getID(String tableName, String whereClause, Object[] values) {
-		return new Query(getCtx(), tableName, whereClause, get_TrxName())
-				.setClient_ID().setParameters(values).firstIdOnly();
+		return new Query(getCtx(), tableName, whereClause, get_TrxName()).setClient_ID().setParameters(values)
+				.firstIdOnly();
 	}
 
 	/**
 	 * get all records in X_I_Product_BOM table
 	 * 
-	 * @param imported
-	 *            boolean
-	 * @param isWithError
-	 *            boolean
+	 * @param imported    boolean
+	 * @param isWithError boolean
 	 * @return collection of X_I_Product_BOM records
 	 */
-	private List<X_I_Product_BOM> getRecords(boolean imported,
-			boolean isWithError) {
-		final StringBuffer whereClause = new StringBuffer(
-				X_I_Product_BOM.COLUMNNAME_I_IsImported).append("=?");
+	private List<X_I_Product_BOM> getRecords(boolean imported, boolean isWithError) {
+		final StringBuffer whereClause = new StringBuffer(X_I_Product_BOM.COLUMNNAME_I_IsImported).append("=?");
 
 		if (isWithError) {
-			whereClause.append(" AND ")
-					.append(X_I_Product_BOM.COLUMNNAME_I_ErrorMsg)
-					.append(" IS NULL");
+			whereClause.append(" AND ").append(X_I_Product_BOM.COLUMNNAME_I_ErrorMsg).append(" IS NULL");
 		}
 
-		return new Query(getCtx(), X_I_Product_BOM.Table_Name,
-				whereClause.toString(), get_TrxName()).setClient_ID()
+		return new Query(getCtx(), X_I_Product_BOM.Table_Name, whereClause.toString(), get_TrxName()).setClient_ID()
 				.setParameters(imported).list();
 	}
 }
