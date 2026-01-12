@@ -942,6 +942,10 @@ public class ImportOrder extends CustomProcess
 		            if (order.getSalesRep_ID() == 0) order.setSalesRep_ID(getAD_User_ID());
 		            order.setDateOrdered(imp.getDateOrdered());
 		            order.setDateAcct(imp.getDateAcct());
+					int user1Id = imp.get_ValueAsInt("User1_ID"); 
+					if (user1Id > 0) {
+						order.setUser1_ID(user1Id);
+					}
 		            if (imp.get_Value("C_ConversionType_ID") != null) {
 		                order.setC_ConversionType_ID(imp.get_ValueAsInt("C_ConversionType_ID"));
 		            }
@@ -1010,7 +1014,11 @@ public class ImportOrder extends CustomProcess
 		            if (imp.getC_Charge_ID() != 0) {
 		                line.setC_Charge_ID(imp.getC_Charge_ID());
 		            }
-
+					
+					int lineUser1Id = imp.get_ValueAsInt("User1_ID");
+					if (lineUser1Id > 0) {
+						line.setUser1_ID(lineUser1Id);
+					}
 		            line.setQty(imp.getQtyOrdered());
 		            line.setPriceList(priceList);
 		            line.setPriceEntered(finalPrice);
