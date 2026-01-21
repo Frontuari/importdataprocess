@@ -1025,6 +1025,7 @@ public class ImportOrder extends CustomProcess
 		            line.setPriceActual(finalPrice);
 
 		            line.set_ValueOfColumn("Discount", discountObj);
+		            line.set_ValueOfColumn("IsManualDiscount", imp.get_Value("IsManualDiscount"));
 		            line.set_ValueOfColumn("Add_Discount", addDiscount);
 
 		            if (imp.getC_Tax_ID() != 0) {
