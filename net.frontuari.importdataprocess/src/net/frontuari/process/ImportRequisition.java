@@ -117,7 +117,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 			  .append(" Description = substring(Description,0,250),")
 			  .append(" I_ErrorMsg = ' ',")
 			  .append(" I_IsImported = 'N' ")
-			  .append("WHERE I_IsImported<>'Y' OR I_IsImported IS NULL");
+			  .append("WHERE I_IsImported<>'Y' OR I_IsImported IS NULL OR I_IsImported='E'");
 		no = DB.executeUpdate(sql.toString(), get_TrxName());
 		if (log.isLoggable(Level.INFO)) log.info ("Reset=" + no);
 		
@@ -411,9 +411,13 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 		Timestamp now = new Timestamp(System.currentTimeMillis());
 		
 		//	Go through Requisition Records w/o
+		// Nueva versión con filtro de seguridad
 		sql = new StringBuilder ("SELECT * FROM I_Requisition ")
-			  .append("WHERE I_IsImported='N'").append (clientCheck)
-			.append(" ORDER BY AD_OrgTrx_ID,AD_User_ID,C_DocType_ID,DocumentNo,I_Requisition_ID,M_Requisition_ID,M_Product_ID,C_Charge_ID,Qty,IsExpenseDistributive");
+		      .append("WHERE I_IsImported='N' ")
+		      // Este es el "candado": si tiene errores escritos, no lo selecciones
+		      .append("AND (I_ErrorMsg IS NULL OR I_ErrorMsg = ' ' OR I_ErrorMsg = '') ") 
+		      .append(clientCheck)
+		    .append(" ORDER BY AD_OrgTrx_ID,AD_User_ID,C_DocType_ID,DocumentNo,I_Requisition_ID,M_Requisition_ID,M_Product_ID,C_Charge_ID,Qty,IsExpenseDistributive");
 		try
 		{
 			pstmt = DB.prepareStatement (sql.toString(), get_TrxName());
@@ -445,7 +449,7 @@ public class ImportRequisition extends CustomProcess implements ImportProcess {
 						if (m_docAction != null && m_docAction.length() > 0)
 						{
 							req.setDocAction(m_docAction);
-							if(req.processIt (m_docAction)) {
+							if(!req.processIt (m_docAction)) {
 								log.warning("Requisition Process Failed: " + req + " - " + req.getProcessMsg());
 								DB.close(rs, pstmt);
 								throw new IllegalStateException("Order Process Failed: " + req + " - " + req.getProcessMsg());
