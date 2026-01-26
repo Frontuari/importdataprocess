@@ -883,6 +883,7 @@ public class ImportOrder extends CustomProcess
 
 		    while (rs.next()) {
 		        X_I_Order imp = new X_I_Order(getCtx(), rs, get_TrxName());
+				boolean forceNewOrder = (currentLineCount >= maxLinesByDocument);	
 		        String cmpDocumentNo = imp.getDocumentNo();
 		        if (cmpDocumentNo == null) cmpDocumentNo = "";
 
@@ -896,7 +897,7 @@ public class ImportOrder extends CustomProcess
 		            || oldCurrency_ID != imp.getC_Currency_ID()
 		            || !oldDocumentNo.equals(cmpDocumentNo) 
 		            || !oldPOReference.equals(cmpPOReference)
-		            || currentLineCount >= maxLinesByDocument) {
+		            || forceNewOrder) {
 
 		            if (order != null) {
 		                if (m_docAction != null && m_docAction.length() > 0) {
@@ -1038,6 +1039,7 @@ public class ImportOrder extends CustomProcess
 		            line.saveEx();
 		            lineMap.put(lineKey, line);
 		            noInsertLine++;
+					currentLineCount++;
 		        } else {
 		            line = lineMap.get(lineKey);
 		        }
