@@ -853,7 +853,7 @@ public class ImportOrder extends CustomProcess
 
 		int noInsert = 0;
 		int noInsertLine = 0;
-		Integer maxLinesByDocument = MSysConfig.getIntValue("MAXLINESBYDOCUMENT", 0, getAD_Client_ID());
+		Integer maxLinesByDocument = MSysConfig.getIntValue("MAXLINESBYORDER", 0, getAD_Client_ID());
 
 		if (maxLinesByDocument <= 0) {
 		    maxLinesByDocument = Integer.MAX_VALUE;
