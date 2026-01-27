@@ -920,6 +920,7 @@ public class ImportOrder extends CustomProcess
 		            if (oldDocumentNo == null) oldDocumentNo = "";
 		            if (oldPOReference == null) oldPOReference = "";
 
+					lineMap.clear();
 		            order = new MOrder(getCtx(), 0, get_TrxName());
 		            order.setClientOrg(imp.getAD_Client_ID(), imp.getAD_OrgTrx_ID());
 		            order.setC_DocTypeTarget_ID(imp.getC_DocType_ID());
