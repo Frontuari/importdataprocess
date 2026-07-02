@@ -39,6 +39,7 @@ import org.compiere.util.Env;
 
 import net.frontuari.base.CustomProcess;
 import net.frontuari.custom.model.FTUMInvoice;
+import net.frontuari.custom.model.FTUMInvoiceLine;
 
 
 /**
@@ -991,7 +992,7 @@ public class ImportInvoice extends CustomProcess
 				}
 				imp.setC_Invoice_ID (invoice.getC_Invoice_ID());
 				//	New InvoiceLine
-				MInvoiceLine line = new MInvoiceLine (invoice);
+				FTUMInvoiceLine line = new FTUMInvoiceLine (invoice);
 				if (imp.getLineDescription() != null)
 					line.setDescription(imp.getLineDescription());
 				line.setLine(lineNo);
